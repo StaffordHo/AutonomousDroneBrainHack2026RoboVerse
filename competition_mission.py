@@ -194,11 +194,38 @@ async def perception_scan(logger, args, duration_s=5, label="scan", stop_on_dete
         save_evidence(latest_frame.copy(), latest_detections, summary, f"{label}_summary")
     return summary, found_new_detection
 
-async def navigate_to_waypoint(drone, target_n, target_e, target_d, obstacle_monitor, avoid_planner, global_mapper, label="nav"):
+async def navigate_to_waypoint(drone, target_n, target_e, target_d, obstacle_monitor, avoid_planner, global_mapper, label="nav", use_astar=True):
+    if latest_position_ned is None:
+        return False
+        
+    current_n = latest_position_ned.north_m
+    current_e = latest_position_ned.east_m
+    
+    # 1. Try Global A* Pathfinding if enabled and map exists
+    if use_astar:
+        grid, origin = global_mapper.get_occupancy_grid(resolution=0.5, dilation_iters=2)
+        if grid is not None:
+            from AStarPlanner import AStarPlanner
+            planner = AStarPlanner(grid, origin, resolution=0.5)
+            path = planner.find_path((current_n, current_e), (target_n, target_e))
+            
+            if path and len(path) > 2:
+                print(f"[{label}] A* Path found with {len(path)} waypoints. Following optimized path...")
+                for i, wp in enumerate(path):
+                    # Navigate to each sub-waypoint using straight avoidance (recursive call)
+                    success = await navigate_to_waypoint(
+                        drone, wp[0], wp[1], target_d, 
+                        obstacle_monitor, avoid_planner, global_mapper, 
+                        label=f"{label}-wp{i}", use_astar=False
+                    )
+                    if not success: return False
+                return True
+
+    # 2. Straight Navigation with Local Avoidance (Core Loop)
     print(f"Navigating to {target_n:.1f}N, {target_e:.1f}E (Label: {label})")
     
     # Send a small velocity initially to engage offboard correctly
-    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0, 0, 0, 0))
+    await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, latest_yaw_deg))
     
     while not check_timeout():
         if latest_position_ned is None or latest_yaw_deg is None:
@@ -211,9 +238,9 @@ async def navigate_to_waypoint(drone, target_n, target_e, target_d, obstacle_mon
         
         distance_to_target = math.sqrt((target_n - current_n)**2 + (target_e - current_e)**2)
         
-        if distance_to_target < 1.5:  # Arrival threshold
-            print(f"[{label}] Arrived at waypoint. (Distance {distance_to_target:.1f}m < 1.5m)")
-            await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0, 0, 0, 0))
+        if distance_to_target < 1.2:  # Arrival threshold
+            print(f"[{label}] Arrived at waypoint. (Distance {distance_to_target:.1f}m)")
+            await drone.offboard.set_velocity_ned(VelocityNedYaw(0, 0, 0, latest_yaw_deg))
             return True
             
         depth_img = obstacle_monitor.latest_depth

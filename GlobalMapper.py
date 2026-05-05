@@ -90,6 +90,46 @@ class GlobalMapper:
         np.save(filename, self.global_points)
         print(f"✅ Saved {len(self.global_points)} points to {filename}")
 
+    def get_occupancy_grid(self, resolution=0.5, dilation_iters=2):
+        """
+        Converts the point cloud into a 2D occupancy grid for A* pathfinding.
+        Returns: (grid, origin_offset) where origin_offset is (min_n, min_e)
+        """
+        if len(self.global_points) == 0:
+            return None, None
+            
+        pts = self.global_points
+        
+        # Define grid bounds (Meters). Centered roughly on start.
+        min_n, max_n = -40.0, 60.0
+        min_e, max_e = -40.0, 60.0
+        
+        width_px = int((max_e - min_e) / resolution)
+        height_px = int((max_n - min_n) / resolution)
+        
+        grid = np.zeros((height_px, width_px), dtype=np.uint8)
+        
+        # Map points to grid indices
+        # row = North, col = East
+        n_idx = ((pts[:, 0] - min_n) / resolution).astype(int)
+        e_idx = ((pts[:, 1] - min_e) / resolution).astype(int)
+        
+        # Filter indices within bounds
+        valid_mask = (n_idx >= 0) & (n_idx < height_px) & (e_idx >= 0) & (e_idx < width_px)
+        n_idx = n_idx[valid_mask]
+        e_idx = e_idx[valid_mask]
+        
+        grid[n_idx, e_idx] = 1
+        
+        # Dilate obstacles to create a safety buffer (footprint)
+        # 2 iterations at 0.5m resolution = 1.0m extra buffer
+        if dilation_iters > 0:
+            from scipy import ndimage
+            grid = ndimage.binary_dilation(grid, iterations=dilation_iters).astype(np.uint8)
+            
+        origin_offset = (min_n, min_e)
+        return grid, origin_offset
+
 
 # ================= Sample usage EXAMPLE =================
 async def run():
