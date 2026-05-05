@@ -57,7 +57,8 @@ class AvoidancePlanner:
             region = depth_map[:, x_start:x_end]
 
             # Robust distance (closest obstacles dominate)
-            d = np.nanpercentile(region, 20)
+            d = float(np.nanpercentile(region, 20))
+            if np.isnan(d): d = 0.0
             distances[i] = d
 
             # Cost function
@@ -80,9 +81,13 @@ class AvoidancePlanner:
     def compute_clearance(self, depth_map):
         w = depth_map.shape[1]
 
-        left = np.nanpercentile(depth_map[:, :w//3], 20)
-        center = np.nanpercentile(depth_map[:, w//3:2*w//3], 20)
-        right = np.nanpercentile(depth_map[:, 2*w//3:], 20)
+        left = float(np.nanpercentile(depth_map[:, :w//3], 20))
+        center = float(np.nanpercentile(depth_map[:, w//3:2*w//3], 20))
+        right = float(np.nanpercentile(depth_map[:, 2*w//3:], 20))
+
+        if np.isnan(left): left = 0.0
+        if np.isnan(center): center = 0.0
+        if np.isnan(right): right = 0.0
 
         return left, center, right
 
@@ -294,6 +299,10 @@ class AvoidancePlanner:
         return north, east, down, info
 
     def compute_velocity(self, depth_map, pose=None, target_n=None, target_e=None):
+        # --- Sanitize Depth Map ---
+        # inf means too far (clear)
+        depth_map = np.where(np.isinf(depth_map), 10.0, depth_map)
+
         # --- Calculate Goal Angle ---
         goal_angle_body = 0.0
         if pose is not None and target_n is not None and target_e is not None:
@@ -322,7 +331,9 @@ class AvoidancePlanner:
         # --- Step 5: Select direction (Goal + Avoidance) ---
         angle, best_idx = self.select_direction(histogram, angles, goal_angle_body)
 
-        vx, vy, speed = self.angle_to_velocity(angle, center)
+        # Use the distance of the selected bin to control speed, so it doesn't creep sideways
+        selected_distance = distances[best_idx]
+        vx, vy, speed = self.angle_to_velocity(angle, selected_distance)
 
         # --- Step 6: Emergency override ---
         emergency = self.emergency_override(left, center, right)
