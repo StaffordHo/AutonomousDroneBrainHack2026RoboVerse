@@ -1,0 +1,509 @@
+RoboVerse: Flight Challenge
+Search and Map
+
+1
+
+AGENDA
+Main goal: To provide teams
+ideas/algorithms to extend
+obstacle avoidance capabilities
+into goal-based and search.
+
+1. Goal + Avoidance Approach
+2. Exploration Strategy
+3. Object Detection
+4. Occupancy Grid
+
+2
+
+1.
+
+Goal + Avoidance Approach
+
+3
+
+•Avoidance Vector: Points away from the chair.
+XXX
+•Resultant
+Vector: The agent "veers" slightly to the side to miss the chair but maintains its forward momentum toward th
+
+Goal vector
+TITLE
+
+SUBTITLE
+AvoidancePlanner provides avoidance vector which
+•
+
+telling where it is safe to go. This is very reactive.
+
+•
+
+It is like pinball in pinball machine. When block, just
+turn. Quite aimlessly.
+
+•
+
+The Goal Vector represents the "intent." It is a
+localized vector pointing from the agent’s current
+position toward the target coordinates.
+
+•
+
+Hybrid Approach: Avoidance Vector + Goal Vector
+•
+•
+•
+
+Goal Vector: Points directly at the door.
+Avoidance Vector: Points away from the chair.
+Resultant Vector: The agent "veers" slightly to
+the side to miss the chair but maintains its
+forward momentum toward the door.
+
+4
+
+•Avoidance Vector: Points away from the chair.
+XXX
+•Resultant
+Vector: The agent "veers" slightly to the side to miss the chair but maintains its forward momentum toward th
+
+The "Virtual Target" Approach
+TITLE
+SUBTITLE
+Let’s say there is a list of positions that the drone
+•
+
+should visit. Instead of sending goal positions to the
+drone, send Virtual Targets. The virtual target is the
+result of vectors:
+•
+Step 1: Calculate the Goal Vector (the direction
+to the the target positions from current
+position).
+
+•
+
+•
+
+Step 2: Calculate the Avoidance Vector (the
+direction away from obstacles or positions to
+avoid the obstacles).
+
+•
+
+Step 3: Sum them to get the Resultant
+positions.
+
+•
+
+Step 4: Project a point a short distance along
+that resultant direction. This point is your
+set_point for the next movement.
+
+The distance of the Look-Ahead (d) affects alot:
+If d is too large: The drone may try to cut
+•
+corners through obstacles because the target
+is on the other side.
+•
+If d is too small: The drone will move very slowly
+and jitter, as the position controller reaches
+the set-point too quickly.
+5
+
+•Avoidance Vector: Points away from the chair.
+XXX
+•Resultant
+Vector: The agent "veers" slightly to the side to miss the chair but maintains its forward momentum toward th
+
+Obstacle-Free Polar Mapping
+TITLE
+
+SUBTITLE
+The drone scans its surroundings as a 360° map of
+•
+
+distances. Then:
+•
+
+Step A: The Depth Histogram. The drone
+divides its surroundings into "bins" (e.g., every
+10°) as it yaw quarter by quarter.
+
+•
+
+Step B: The Mask. It marks bins as Blocked (if
+an obstacle is closer than a safety threshold) or
+Free.
+
+•
+
+Step C: The Selection. It looks at all the Free
+bins and chooses the one that has the smallest
+angular difference from the Goal Vector.
+
+6
+
+Exploration Strategy
+
+7
+
+•Avoidance Vector: Points away from the chair.
+XXX
+•Resultant
+Vector: The agent "veers" slightly to the side to miss the chair but maintains its forward momentum toward th
+
+Strategy to generate the Goals
+TITLE
+vectors
+(waypoints)
+SUBTITLE
+•
+
+Partition the area into equal square grid.
+
+•
+
+Plan waypoints to make quadcopter move like a
+lawnmower or based some search algorithm (like
+breadth-first-search or depth-first-search) such
+that the quadcopter moves in straight line, and shift
+sideway at boundary.
+
+•
+
+Very likely to get stuck.
+
+•
+
+Keep track of visited grid.
+
+•
+
+When stuck, use wall following strategy to track
+back using the visited grid until back to a grid that
+has unexplored directions.
+
+8
+
+Object Detection
+
+9
+
+•Avoidance Vector: Points away from the chair.
+XXX
+•Resultant
+Vector: The agent "veers" slightly to the side to miss the chair but maintains its forward momentum toward th
+
+Object Detection using Yolo
+TITLE
+SUBTITLE
+•
+
+Qualifier requires your code to detect specific object
+to earn points.
+
+•
+
+Object detection allows the quadcopter to not only
+"see" an obstacle but to identify exactly what it is,
+such as a person, a wall, or another drone.
+
+•
+
+By using the YOLO (You Only Look Once) algorithm,
+the system can detect multiple objects in real-time
+with high accuracy, enabling the drone to make
+split-second navigation decisions.
+
+•
+
+We utilize YOLO for object detection because it
+treats detection as a single regression problem,
+processing the entire image in one pass to predict
+bounding boxes and class probabilities
+simultaneously.
+
+•
+
+This single-shot approach is ideal for quadcopters,
+providing the low-latency inference required to
+update avoidance vectors at high speeds.
+
+10
+
+•Avoidance Vector: Points away from the chair.
+XXX
+•Resultant
+Vector: The agent "veers" slightly to the side to miss the chair but maintains its forward momentum toward th
+
+Getting Gazebo Drone Image
+TITLE
+SUBTITLE
+•
+
+The Gazebo streams Image from the PX4 via gztransport topics.
+
+•
+
+Use gz topic –l to find out the topic name of the
+image stream.
+
+•
+
+See example (get_video.py) on how to get camera
+image:
+•
+line 36 subscribe to the image topic with a
+callback function that display the image.
+•
+
+Line 8 to Line 25 is the callback function.
+
+11
+
+•Avoidance Vector: Points away from the chair.
+XXX
+PLEASE
+refer
+to UseDetectorExample.py
+•Resultant
+Vector:
+The agent "veers" slightly to the side to miss the chair but maintains its forward momentum toward th
+
+Detector.py
+TITLE
+Detector.py encapsulate object detection with YOLO into a
+•
+SUBTITLE
+class called Detector.
+•
+
+The Detector calls YOLO to check if an image contains the
+object of interest. The object of interest is in the model file
+to provide when initialize the Detector.
+
+•
+
+Your code calls Detector’s submit_image() with the
+numpy object of the image. Detector will queue the image
+and runs the detector in background.
+
+•
+
+When Detector has processed an image, it will display the
+result on screen and store the image with the annotation of
+the detect object in a file if there are detection beyond the
+confidence_threshold. The file will be stored in folder where
+you run your code.
+
+•
+
+Example code on how to use Detector.py is shown on the
+right:
+•
+Line 12: Initialize Detector with the callback function
+and set the confidence threshold.
+•
+Line 42: Call detector.submit_image to detect image
+that is received from the subscription.
+
+•
+
+For your drone code, you can simply subscribe to an Image
+topic with a callback that call Detector submit_image like
+this example. Then wait for result to shown on the video
+window or existence of photo files.
+
+•
+
+A basic model that can detect the canister in Qualifier
+Challenger will be published on discord channel.
+12
+
+PLEASE refer to Train_YOLO_Models.ipynb
+XXX
+
+Use Train_YOLO_Models.ipynb to train
+custom
+TITLE model
+SUBTITLE
+•
+If you are interested to train your own and better
+
+model to detect the cannister in Qualifier challenge,
+use the Train_YOLO_Models.ipynb to learn.
+
+•
+
+Google Colab provides a virtual machine in your
+browser complete with a Linux OS, filesystem,
+Python environment, and best of all, a free GPU via a
+colab juypter notebook.
+
+•
+
+We use a colab notebook to install PyTorch and
+Ultralytics in a colab environment and use it to train
+our model where simply click the Play button on
+sections of code in this notebook to execute them
+on the virtual machine.
+
+•
+
+How?
+•
+Access Google Colab using a gmail account.
+•
+Open Train_YOLO_Models.ipynb notebook
+using Google Colab.
+Follow the instructions in the notebook and
+•
+click Play button accordingly to train a model
+using YOLO.
+
+13
+
+PLEASE refer to save_photo.py
+XXX
+
+Gather and Label Training Images
+TITLE
+SUBTITLE
+•
+Before custom training, use the drone’s
+
+camera to take images of the desired objects
+that will be used for training your custom
+object detection model.
+•
+Use save_photo.py which subcribe to
+image topic and save all images (frame by
+frame) to files whenever it receives.
+
+•
+
+•
+
+The training images should have random
+objects in the image along with the desired
+objects, and should have a variety of
+backgrounds and lighting conditions. If
+possible, include actual deployment
+conditions.
+Then label the desired objects within the
+images to tell the model how does the desired
+objects look like.
+
+•
+
+An image can have multiple labels.
+
+•
+
+There are several tools for labeling images
+such as labelimg which is free and simple.
+14
+
+Occupancy Grid
+
+15
+
+•Avoidance Vector: Points away from the chair.
+XXX
+•Resultant
+Vector: The agent "veers" slightly to the side to miss the chair but maintains its forward momentum toward th
+
+Occupancy Grid
+TITLE
+SUBTITLE
+•
+
+As the quadcopter explores the area, it collected
+data about accessible and un-accessible grids.
+
+•
+
+These grid can be used to create map of the entire
+area in the form of occupancy grid which is useful to
+calculating path towards a destination.
+
+•
+
+Qualifier Challenge does not require team to
+generate occupancy grid maps.
+
+•
+
+Learning an occupancy grid is the right next step
+towards the Final Challenge.
+
+•
+
+But the trick is doing it consistently with your
+camera frame, NED frame, and noisy depth. Most
+failures I see aren’t from the math—they’re from
+frame mismatch and bad update logic.
+•
+The solutions to these challenges will be
+discussed in the Supplementary Materials.
+
+16
+
+XXX
+
+Using depth image to generate a
+TITLE
+top-down
+local map of a grid
+SUBTITLE
+•
+
+Leverage depth image to remember the position of
+obstacles, using a top-down local occupancy map.
+
+•
+
+A local map that describes from the perspective of
+drone’s current position.
+
+•
+
+The function depth_to_xy_map in
+top_down.py process the depth image and
+output top down map using the camera intrinsic to
+determine the distance of obstacle.
+
+•
+
+As the drone avoid the obstacles, repeatedly call this
+function and combine the map output into a global
+map.
+
+•
+
+Global map is only possible when the code can know
+the position and orientation of the drone as it flies.
+
+17
+
+XXX
+
+Extending
+the depth_to_xy_map
+TITLE
+SUBTITLE
+function
+into a global mapper
+•
+
+Globalmapper.py uses depth_to_xy_map to combine
+local maps into a global map.
+
+18
+
+THANK YOU
+
+19
+
+

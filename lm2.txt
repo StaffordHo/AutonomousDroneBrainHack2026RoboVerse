@@ -1,0 +1,1197 @@
+RoboVerse: Flight Challenge
+Search and Map
+
+1
+
+AGENDA
+Main goal: To provide teams an
+idea to develop obstacle
+avoidance capabilities with
+localization.
+
+1. Localisation using Visual Odometry
+1. Obstacle Avoidance Using Depth
+Camera
+
+1. Using Depth Data
+
+Drone to use: x500_vision
+
+2
+
+Localisation using
+Visual Odometry
+
+3
+
+XXX
+
+TITLE
+The
+need to estimate position
+SUBTITLE
+
+•
+
+•
+
+•
+
+•
+
+Your code might have enabled the
+quadcopter to go around the environment
+and react to obstacles autonomously.
+The quadcopter keep going around in
+circles aimlessly, and missing unexplored
+areas.
+If the quadcopter is able to estimate its
+location, your code is able to estimate if
+an area has been explored or unexplored.
+We cannot generate a global map without
+a position and orientation of the drone.
+
+4
+
+XXX
+
+TITLE
+Estimate
+position
+SUBTITLE
+•
+
+•
+
+•
+
+•
+
+The primary challenge of localization is the
+environment:
+Outdoor flights usually rely on Global
+•
+Navigation Satellite System (GNSS)
+signals but these can be easily denied.
+•
+Indoor flights require "GNSS-denied"
+techniques that use local environmental
+features.
+Since satellite signals cannot penetrate roofs
+or walls or can be disrupted, drones must use
+"onboard" or "local" references.
+An example of onboard reference is the
+Inertial Measurement Unit (IMU) on a drone.
+Local reference examples are:
+•
+LIDAR
+•
+UWB
+•
+Vision-based such as optical flow, visual
+odometry, stereo camera.
+
+5
+
+XXX
+
+Visual
+TITLE Odometry
+SUBTITLE
+
+•
+
+•
+
+•
+
+Visual Odometry (VO) is the process of
+estimating the position and
+orientation (pose) by analyzing the
+changes that motion induces in
+adjacent camera images.
+Adjacent images can be frames
+•
+after frames or stereo camera
+images.
+Think of it like a human walking in the
+dark with a flashlight: you know how
+far you’ve moved by watching how
+landmarks (a chair, a rug, a
+doorframe) shift in your field of
+vision.
+Pros: Easily deployable
+
+6
+
+XXX
+
+How it works (high level pipeline)
+TITLE
+SUBTITLE
+
+•
+
+•
+
+•
+
+•
+
+•
+
+Step 1. Image Acquisition: The camera
+captures frames at a high rate (e.g., 30
+fps).
+Step 2. Feature Detection: The software
+identifies "keypoints" in the image—sharp
+corners, edges, or unique textures.
+Step 3. Feature Tracking/Matching: The
+system looks for those same keypoints in
+the next frame.
+Step 4. Motion Estimation: By measuring
+the geometric displacement of these
+points, the system calculates the
+camera's movement (X, Y, Z and rotation).
+Step 5. Local Optimization: It constantly
+"polishes" the path to reduce small
+calculation errors.
+
+7
+
+XXX
+
+Common types of Visual Odometry
+TITLE
+SUBTITLE
+Type
+
+Description
+
+Pros/Cons
+
+Monocular
+
+Uses a single
+camera.
+
+Pros: Cheap, light. Cons: Cannot
+determine "absolute scale" (doesn't
+know if a move is 1 meter or 1
+centimeter without extra sensors).
+
+Stereo
+
+Uses two
+cameras with a
+known distance
+between them.
+
+Pros: Instantly calculates 3D depth
+and absolute scale.
+Cons: Heavier, higher processing
+power required.
+
+RGB-D
+
+Uses an
+infrared depth
+sensor (like a
+Kinect).
+
+Pros: Excellent for indoor mapping.
+Cons: Limited range; fails in bright
+sunlight.
+
+8
+
+XXX
+
+TITLE
+Limitations
+to Keep in Mind
+SUBTITLE
+
+•
+
+•
+
+•
+
+•
+
+The "Drift" Problem: Because VO calculates
+motion relative to the previous frame, tiny
+errors add up over time. Without a global map
+(SLAM) or GPS to correct it, the estimated
+position will eventually "drift" away from
+reality.
+Low-Texture Environments: VO struggles in
+rooms with plain white walls or over calm
+water, as there are no "features" to track
+Motion Blur: Rapid, jerky movements can blur
+the image, making it impossible to match
+keypoints accurately.
+Lighting: Extreme darkness or blinding glare
+can "blind" the algorithm.
+
+9
+
+XXX
+
+TITLE
+VO
+vs. SLAM: What’s the
+SUBTITLE
+difference?
+•
+
+•
+
+•
+
+Visual Odometry: Only cares about the local
+path (where am I compared to 1 second ago?).
+It is computationally "light.
+Visual SLAM (Simultaneous Localization and
+Mapping): Builds a permanent map of the
+whole environment and recognizes when it has
+returned to a previous spot (Loop Closure) to
+fix all accumulated drift. It is much more
+"heavy" on the processor.
+As such, the Qualifier will only require teams to
+achieve some simple map without visual slam
+due to Visual SLAM’s heavy processor demand.
+
+10
+
+XXX
+
+VO
+options on PX4 for position
+TITLE
+SUBTITLE
+estimates
+•
+
+PX4 Autopilot can use these opensource VisualInertial Odometry (VIO) for position estimate.
+
+•
+
+VINS-Fusion:
+•
+
+•
+
+While technically a SLAM system, ORB-SLAM3 is
+widely used for its visual odometry capabilities. It is
+famous for its ability to handle "Loop Closure"
+(recognizing a place it has been before to zero out
+drift).
+
+Kimera (by MIT SPARK Lab):
+•
+
+•
+
+vionode
+
+ORB-SLAM3:
+•
+
+•
+
+It is an extension of VINS-Mono and supports
+monocular, stereo, and even GPS-aided
+configurations but require heavier computation
+power.
+
+Kimera is a "Metric-Semantic" SLAM library. It
+was designed specifically for high-speed drone
+flight but require ROS/ROS2.
+
+OpenVINS:
+•
+
+OpenVINS is often used by researchers who need
+high-accuracy state estimation with lower CPU
+overhead and due its modular extensible architecture.
+
+11
+
+XXX
+
+How
+TITLEto use OpenVINS or other
+SUBTITLEwith PX4
+VIO
+•
+
+OpenVINS or other VIO system replaces GPS to
+provide PX4 with position estimates.
+
+•
+
+Before OpenVINS or other VIO system, VIO system
+needs to detect movement of drone. One can
+physically move the drone or run some codes to
+trigger movement, for the VIO to register movement
+and start estimating.
+
+•
+
+Then VIO can send the position estimate to PX4 or
+any other drone system.
+
+•
+
+PX4 will not allow arming without position estimate
+as a form of failsafe. To allow arming, the only way is
+to physically move the drone.
+
+•
+
+PX4 has a virtual drone that simulates vision
+odometry in Gazebo which PX4 allows arming upon
+startup without the need of triggering the VIO
+processing. The drone is x500_vision.
+
+12
+
+XXX
+
+Using
+TITLE OpenVINS on the vmware
+SUBTITLE
+machine
+•
+
+The VMWare machine has OpenVINS installed,
+together with vio-node bridge that:
+•
+•
+
+•
+
+Get IMU and camera, and feed into OpenVINS
+Get pose estimate from OpenVINS and feed
+into PX4.
+
+Run the following to try out OpenVINS:
+•
+•
+•
+•
+•
+
+Start PX4 as usual which also start
+the gazebo simulator.
+START a new Terminal window and
+enter the following commands:
+1. cd ~/openvins_bridge
+2. ./vio-node
+Start a new Terminal window and
+enter the following commands:
+•
+cd ~/Desktop/codes
+python3 keyboard_control.py
+•
+
+13
+
+XXX
+
+Using
+TITLE PX4 x500_vision for VIO
+SUBTITLE
+simulation
+•
+
+A physical drone with VIO capabilities will be used in
+the Final. The subsequent slide will cover more using
+VIO, coding some simple VIO and how to setup VIO.
+
+•
+
+Qualifier will use PX4 x500_vision instead of
+OpenVINS for simulation of a VIO capable drone.
+
+•
+
+To use PX4 x500_vision, select (2) for vehicle model
+when you run ./start_px4.sh
+
+•
+
+After PX4 commander ready to accept command,
+type the following at px4>
+
+commander set_ekf_origin 47.397742
+8.545594 488.0
+•
+
+OR use SET ESTIMATOR ORIGIN using
+QGroundControl after you click anywhere on the
+map.
+
+•
+
+This to tell PX4 to set the ekf origin so that it starts
+to fuse the sensor data.
+
+14
+
+XXX
+
+Getting
+TITLE pose using mavsdk
+SUBTITLE
+•
+
+After PX4's EKF2 fuses VIO from x500_vision or
+OpenVINS and streams the result via
+LOCAL_POSITION_NED, which MAVSDK reads
+seamlessly.
+
+•
+
+Your code can get position update using
+
+•
+
+The position data is in meters in terms of NED, in other
+words position of the drone body itself and relative to the
+takeoff position of the drone (or where your drone get
+initialized). Refer to get_position.py for details.
+
+•
+
+Your code could call position_velocity_ned() as and when in
+your logic, or create python task and shared state to get
+position in background while your main loop runs. See
+get_position_task.py for details.
+•
+Within get_position_with_task.py, there is a block that
+says “your control logic starts here”. This is where your
+autonomous code goes.
+
+INSTRUCTOR: to step through key part of
+get_position_with_tasks, especially the creating
+task and use shared state to pass position data
+from monitor loop to the main loop.
+
+async for pos_vel in
+drone.drone.telemetry.position_velocity_ned():
+
+15
+
+Obstacle using Depth
+Camera
+[Drone to use: x500_vision]
+
+16
+
+XXX
+
+TITLEis a Depth Camera?
+What
+SUBTITLE
+
+•
+
+•
+•
+
+A depth camera (also known as an RGB-D
+camera) is a type of sensor that provides
+more than just a 2D color image. It
+captures spatial data, allowing the system
+to know exactly how far away every pixel
+in the frame is from the lens.
+Depth Camera provides color (R, G, B) +
+distance (D).
+The Result: A 3D "snapshot" of the
+environment rather than a flat projection.
+
+17
+
+XXX
+
+TITLE Camera Technologies
+Depth
+SUBTITLE
+•
+
+Depth cameras use one of three primary
+technologies to estimate distance:
+•
+Stereo Vision: Uses two cameras
+slightly apart (like human eyes). By
+comparing the horizontal shift of
+objects between the two images
+(disparity), the distance is calculated.
+•
+Structured Light: Projects a known
+pattern of infrared dots or lines onto a
+scene. The camera observes how the
+pattern deforms on surfaces to
+calculate depth.
+Time-of-Flight (ToF): Emits a light
+•
+pulse and measures the nanoseconds
+it takes for the light to bounce off an
+object and return.
+•
+Depth Estimation can also be done
+using one camera (Monocular Depth
+Estimation)
+18
+
+XXX
+
+TITLE
+Monocular
+Depth Estimation
+SUBTITLE
+•
+•
+•
+
+•
+
+Depth Estimation can also be done using
+one camera.
+Often, a single image doesn’t contain
+information at the correct scale.
+So, early monocular depth estimation
+methods relied on straightforward visual
+rules tied to camera geometry. Cues like
+perspective, object size, and whether one
+object blocked another were used to
+estimate distance.
+Most modern monocular depth estimation
+systems use deep learning, which refers
+to neural networks with many layers that
+can learn complex patterns from data.
+These models learn to predict depth
+directly from images and produce depth
+maps.
+
+19
+
+XXX
+
+TITLEmonocular depth
+How
+SUBTITLE
+estimation
+models work
+•
+
+Most monocular depth estimation models
+follow a similar process to convert a
+single image into a depth map:
+•
+
+•
+
+•
+
+•
+
+Input and preprocessing: The original
+image is usually resized, normalized, and
+converted into a tensor.
+Feature extraction: An encoder network
+analyzes the image to extract meaningful
+visual features such as textures, object
+boundaries, and the overall layout of the
+scene.
+Depth reasoning: At this stage, it learns
+which regions of the image are closer to
+the camera and which are farther away.
+Depth map generation: A decoder then
+converts this information into a dense
+depth map. Each pixel in the image is
+assigned a depth value, often by blending
+predictions from different scales to
+improve accuracy and consistency.
+
+20
+
+XXX
+
+TITLE Estimation in Qualifier
+Depth
+SUBTITLE
+and
+Final
+•
+
+•
+
+•
+•
+
+For Qualifier, teams are required to use
+the depth camera in X500 virtual drone.
+[x500_depth]
+For Final, the physical drones are
+equipped with RealSense D435i or D455
+stereo depth camera.
+Both comes with API that allows team to
+get depth data easily.
+As such, teams need not develop depth
+estimation algorithm from scratch.
+
+21
+
+Using depth data
+provided by Gazebo
+[Drone to use: x500_vision]
+
+22
+
+XXX
+
+TITLEgazebo provide sensor
+How
+SUBTITLE
+data
+•
+
+•
+
+•
+
+•
+
+PX4 does not provide data on peripherals
+sensors like camera, stereo camera. Those are
+provided by Gazebo.
+Gazebo provides data using a middleware
+library called gz-transport. The library
+supports many programming languages.
+It allows different parts of Gazebo and its
+plugins—such as rendering engines, physics
+plugins, sensors, and external controllers—to
+exchange data seamlessly without needing
+detailed knowledge of each other using
+publisher-subscriber data exchange.
+Data are published via named channel, also
+known as topic. Subscribe to topics to get
+data. Some examples are:
+
+23
+
+XXX
+
+TITLEto discover topics
+How
+SUBTITLE
+•
+
+•
+
+•
+
+•
+
+•
+
+Use gz topic to find out more about
+topics that are published after gazebo
+starts.
+Try it out using Terminal after the PX4
+simulator is started.
+For example, X500_depth provide both
+depth data via /depth_camera and
+monocular camera image via another
+topic.
+First step, it is to know the names of
+topics and what types of message publish
+by the topic.
+GZ libraries provides libraries to use those
+message types.
+24
+
+XXX
+
+TITLEto subscribe to topics
+How
+SUBTITLE
+using
+python
+•
+•
+
+•
+
+•
+
+•
+•
+
+depthtest.py
+
+Use gz.transport13 and gz.msgs10
+libraries (line 3 and 4).
+After knowing the name of the topic, add
+to the topic name to subscribe (for e.g.
+line 31)
+When there is data published onto that
+topic, gz-transport calls the function that
+is provided as callback when calling
+node.subscribe() (for e.g. line 34).
+As such, your code needs to provide a
+callback function that takes in a
+parameter to consume the data.
+/depth_camera provides Image type.
+depthtest.py (code on the right) shows
+how to display visually the depth data
+using opencv.
+
+25
+
+XXX
+
+Understanding gz.msgs.Image Data
+TITLE
+Structure and displaying it
+
+depthtest.py
+
+SUBTITLE
+•
+
+•
+
+•
+•
+
+Gz-transport provides depth data using
+Image data structure:
+
+IMPORTANT: data is not a 2D array. It's a
+flat byte stream that must be interpreted
+using width, height and step and format.
+For example, see line 8 and line 9 where
+numpy uses width and height information.
+depthtest.py (code on the right) shows
+how to display visually the depth data
+using opencv.
+26
+
+XXX
+
+What does float32 mean?
+TITLE
+
+depthtest.py
+
+SUBTITLE
+•
+
+•
+•
+
+•
+
+•
+
+•
+
+Each pixel value uses 4 byte to represent
+distance in meters from camera optical
+center to surface.
+See line 13 to 21, especially line 13 which
+tell numpy how to interpret the data.
+Range:
+•
+0.0 (invalid/no return) → near_clip →
+far_clip (e.g., 10.0m)
+Precision:
+~1mm accuracy in typical ranges
+•
+(sufficient for drone navigation)
+Special Values:
+•
+0.0 or NaN: No valid depth (ray hit sky,
+transparent material, or out of range)
+•
+inf: Clipped at far boundary
+Why not uint16?
+•
+uint16 requires scaling (e.g., mm =
+value/1000). float32 stores meters
+directly, simplifying 3D math and
+point cloud generation.
+27
+
+Using depth data for
+obstacle avoidance
+
+28
+
+XXX
+PLEASE
+refer to depth_receiver.py while reading this slide
+
+Make the depthtest.py into a
+TITLE
+depth_receiver class for ease of use
+SUBTITLE
+•
+
+•
+
+Let’s extract the core part of the
+depthtest.py that turns Image data into
+numpy object, and put it into a
+depth_receiver class.
+
+depth_receiver.py
+
+The depth_receiver class will have a
+function, called get_frame() that
+allows other function to get the latest
+image data numpy object.
+
+29
+
+XXX
+PLEASE
+refer to AvoidancePlanner.py and drone_control.py while reading this slide
+
+A closed-loop pipeline for avoiding
+TITLE
+obstacles using depth camera data
+SUBTITLE
+•
+
+•
+
+Let us start by building a pipeline that makes
+quadcopter reacts to presence of obstacles
+(like tree, blocks, columns or walls) such that it
+moves left or right and forward, depending on
+distance to object.
+•
+A rather low-level reactive mechanism.
+Later we will build higher level planning
+upon this pipeline to have mapping and
+searching capabilities.
+A closed-loop pipeline that continuously
+1.
+Get data from depth camera.
+•
+perform using get_frame() in
+depth_receiver.py
+2.
+Processing depth map data to derive
+position (relative to the drone takeoff
+position) to fly.
+•
+performed by
+compute_position_ned
+function in AvoidancePlannner.py.
+3.
+Use the set_position in drone_control.py
+to control quadcopter
+Repeat (1) until goal is met
+4.
+
+30
+
+XXX
+PLEASE
+refer to AvoidancePlanner.py while reading this slide
+
+Summarizing the depth data
+TITLE
+SUBTITLE
+
+•
+
+•
+
+The depth_receiver.py provides a depth_map, 2D
+array that describes distance of objects from the
+stereo camera which is quite challenging if it is not
+pre-processed or summarized.
+First, segment depth_map into equal region based
+on num_of_bins in the code. This could
+something that you could tweak to affect the
+performance. Then the following is done on distance
+data in each region:
+•
+A distance value of that region is determined
+by calculating 20 percentile of each region,
+excluding NAN data.
+•
+Then that distance value is used to get a cost
+value where distance less than
+critical_distance gets highest cost.
+Angle of the center of the region is calculated
+•
+using the camera’s intrinsic values (focal length
+of the camera along x axis and principal point xcoordinate).
+
+31
+
+XXX
+PLEASE
+refer to AvoidancePlanner.py while reading this slide
+
+Using the summarized data to make
+TITLE
+speed decision
+SUBTITLE
+
+•
+
+•
+
+•
+
+The summarized data are further computed to
+derive the velocity to move forward or left/right:
+•
+The regions bin are further summarized into
+three distance of left, center, and right.
+•
+The left, center, right is then assessed to see if
+it is open space straight ahead, or if it is a
+narrow passage, or even it is completely
+blocked, based on the critical_distance
+and safe_distance value values that are
+used to initialize the VelocityPlanner.
+If not blocked, the best angle to fly is selected
+•
+using the histogram, which is to estimate the
+velocity.
+The velocity is further “smoothed” before provided
+to the calling function by considering previous
+velocity and the alpha value. The alpha value can be
+tweaked to affect the performance.
+The processing and summarizing are performed
+when compute_position_ned function in
+AvoidancePlanner.py is called with a depthmap
+numpy array.
+
+32
+
+XXX
+PLEASE
+refer to AvoidancePlanner.py while reading this slide
+
+Output from compute_position_ned function
+TITLE
+SUBTITLE
+
+•
+
+The compute_position_ned returns three float –
+•
+the north position in m
+the east position in m
+•
+the down position in m
+•
+
+•
+
+Note: The position is relative to where the drone
+takeoff.
+
+•
+
+Also a dictionary object that describes:
+•
+Blocked: true/false
+Environment: “open” or “forward_clear” or
+•
+“left_open” or “right_open”
+•
+Clearance:
+•
+“left” – a float value to describe object
+distance at left region.
+“center” – a float value to describe object
+•
+distance at center region.
+•
+“right” – a float value to describe object
+distance at the right region.
+
+•
+
+Besides the position, the dictionary object are very
+important for higher level planning such as what to
+do when the entire front is blocked and etc.
+33
+
+XXX
+PLEASE
+refer to avoid.py while reading this slide
+
+Using compute_velocity to implement
+TITLE
+the pipeline
+SUBTITLE
+
+•
+
+Line 99 to line 167 in avoid.py implements the loop
+pipeline.
+Line 117: Get position update.
+•
+Line 119: It starts by grabing depthmap array
+•
+using depth_receiver’s get_frame()
+Line 124: Calls AvoidancePlanner
+•
+compute_position_ned to get next move.
+
+•
+
+Besides command the PX4 to fly, the loop attempts
+to implement some high level decision (line 139 to
+line 143) such as rotating right or left if the front is
+completely blocked.
+•
+This is where your team implements the
+search strategy.
+•
+The next workshop will cover this aspect and
+mapping which using histogram to generate
+map.
+
+34
+
+XXX
+PLEASE
+refer to vel_avoidance.py while reading this slide
+
+Using drone_control.py to command PX4
+TITLE
+SUBTITLE
+
+•
+
+avoid.py uses Drone object in drone_control.py
+which wrap MAVSDK functions into moer
+purposeful function call for ease of use.
+
+35
+
+XXX
+
+Differences in Coordinate Frame of
+TITLE
+drone, camera, and world
+SUBTITLE
+•
+
+•
+
+•
+
+Due to the differences on the facing x-y-z
+between camera data and PX4
+commands, there is to “convert” or
+transform the x-y-z data before using to
+instruct PX4 or later using PX4 data for
+processing.
+As the drone rotates (yaw), the
+transformation is needed to ensure
+correctness of the coordinates.
+Thus, the Line 220 to line 222 in
+AvoidancePlanner.py function performs
+as a series of matrix rotation with respect
+to yaw facing of the quadcopter.
+These are also known more in
+•
+Supplementary Material.
+
+36
+
+XXX
+
+TITLE next for your team?
+What’s
+SUBTITLE
+
+•
+
+Develop your code to avoid obstacles and navigate the
+roboverse.
+•
+Consider your high level strategy to handle
+situation when the quadcopter faces a blocked or
+even a deadend, and how can the histogram be
+used for mapping.
+
+•
+
+You can develop your own or based it off the avoid.py,
+drone_control.py, AvoidancePlanner.py and
+depth_receiver.py, and get_position_with_task.py.
+
+•
+
+Feel free to discuss and check out with our experts via
+the discord channel.
+
+37
+
+XXX
+
+TITLE that are discussed and
+Codes
+SUBTITLE
+their
+abilities
+•
+
+These codes are discussed today and are available for
+download at RoboVerse Discord server’s Learning
+Material Channel
+avoid.py
+•
+•
+Purpose: Glue other modules to implement
+the obstance avoidance pipeline.
+•
+drone_control.py
+•
+Purpose: Abstract mavsdk into higher order
+function like set_position which is go to
+position and etc.
+•
+depth_receiver.py
+•
+Purpose: Interface with gazebo to get depth
+camera image.
+•
+AvoidancePlanner.py
+•
+Purpose: Process depth image and provide
+position to move.
+•
+depthtest.py
+Purpose: Just to test depth camera.
+•
+•
+get_position_with_task.py
+•
+Purpose: Get position and yaw position of
+drone in background
+
+38
+
+THANK YOU
+
+39
+
+

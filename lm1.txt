@@ -1,0 +1,805 @@
+RoboVerse: Flight Challenge
+Intro to Quadcopter Control
+
+1
+
+AGENDA
+
+1. RoboVerse: Flight Challenge Overview
+2. PX4
+3. Using Simulator
+4. Flight Control using MAVSDK
+5. Getting telemetry data
+6. Getting camera video stream
+
+2
+
+RoboVerse:
+Flight Challenge
+Overview
+
+3
+
+RoboVerse:
+Flight Challenge
+Qualifier
+• RoboVerse: Flight Challenge is
+a drone autonomy challenge.
+• The challenge requires teams
+to come up autonomous
+solutions to solve drone
+challenges in a two stages
+competition - Qualifier and
+Final.
+• In the Qualifier round, the
+teams are to navigate a virtual
+drone to search for fuel barrels
+and map a virtual space depot.
+• The Qualifier round takes place
+on 22 and 23 May 2026
+physically at Grand Court Hotel
+Orchard.
+• Top 26 teams will be invited to
+the Final held on 10-11 June
+2026 at Marina Bay Sands
+(Expo and Convention Centre)
+
+RoboVerse:
+Flight Challenge
+Final
+• In the final round, teams
+are tasked with mapping
+an unknown area using a
+physical drone equipped
+with a depth camera,
+followed by coordinating a
+swarm of drones to locate
+targets.
+
+Journey to Final
+
+•
+
+•
+
+•
+•
+
+Learning packs are on
+RoboVerse: Flight Challenge
+Discord server, for teams to
+learn on their own pace.
+Teams can seek
+consultations from the
+Coordinators via the Discord
+server.
+Invitation link will be sent
+out. Need to provide email
+address for verification.
+Once onboard, you raise a
+ticket to get support from the
+Coordinators.
+
+Technical Help
+
+•
+
+Teams can ask Coordinators
+questions via #supportticket.
+
+•
+
+Click on # support-ticket and
+then Create ticket. Then
+describe the question.
+
+•
+
+One question per ticket.
+
+•
+
+Our Coordinators will followup closely on the ticket.
+
+•
+
+Once the Coordinator has
+addressed your question,
+you may close the ticket.
+
+•
+
+Ticket is private and thus
+other team cannot see.
+
+Discussion
+Channels
+•
+
+There are topic specific
+discussion channel.
+
+•
+
+These are for all teams to
+share and discuss on
+learning.
+
+•
+
+All teams can see.
+
+•
+
+Our Coordinators may chip
+in and thus may or may not
+follow up on questions
+raised on discussion
+channel. They will definitely
+follow up on question raised
+via #support-ticket.
+
+5 Learning
+Packs
+•
+
+•
+
+•
+
+•
+
+The Learning Packs
+consist of videos, sample
+codes, and theoretical
+resources covering
+potential approaches to
+the challenges.
+Three (3) main Learning
+Packs cover quadcopter
+control, obstacle
+avoidance and mapping,
+and object detection.
+Two (2) supplementary
+Learning Packs for the
+Final focus on visual
+odometry.
+Coordinators are on
+RoboVerse Discord server
+to provide guidance and
+technical assistance.
+
+Platform used
+for Qualifier and
+Final
+• PX4-based quadcopter
+• Development environment:
+• Ubuntu 22.04 (with
+development essentials
+c++, python),
+QGroundControl and
+MAVSDK-python and
+MAVSDK-c++
+• A VMWare virtual desktop
+machine that has the
+development platform installed in
+it will be provided.
+• VMWare machine
+installation guide and link
+to download the virtual
+machine are on Discord
+server.
+• Teams can also prepare their
+own development environment.
+• Teams can seek advice from
+Coordinators on the Discord
+server on installations and
+usage.
+
+PX4
+
+11
+
+XXX
+
+TITLEis PX4?
+What
+SUBTITLE
+
+•
+
+•
+
+•
+
+PX4 is a quadcopter autopilot platform
+used in both the Qualifier and Final
+challenges.
+The autopilot acts as the brain of the
+quadcopter, processing sensor data and
+controlling the motors to achieve stable
+flight.
+The flight stack provides essential
+stabilization and safety features, as well
+as a level of pilot assistance for both
+manual and autonomous flight.
+
+12
+
+XXX
+
+TITLE Computer
+Mission
+SUBTITLE
+
+•
+•
+•
+•
+•
+•
+
+Mission Computer or companion computer
+performs high-level intelligence and then
+control the PX4.
+The PX4 passes the control “offboard” to the
+Mission Computer.
+The PX4 and Mission Computer communicate
+over a high-speed serial or IP link using the
+MAVLink protocol.
+Most Mission Computers run a Linux-based OS
+such as Ubuntu 22.04.
+The challenges require teams to develop the
+control logic that runs on the Mission
+Computer.
+During the Qualifier, the Mission Computer will
+be your code running on either the team’s
+laptop or the organiser’s laptop.
+
+13
+
+XXX
+
+TITLE
+MAVSDK
+SUBTITLE
+
+•
+
+•
+
+•
+•
+
+•
+
+MAVLink (Micro Air Vehicle Link) is a
+lightweight, header-only messaging protocol
+designed for bandwidth-constrained radio
+links to communicate between unmanned
+vehicles (drones) and ground control stations
+(GCS) or internal components.
+MAVSDK (or MAV Software Development Kit) is
+a set of high-level, cross-platform libraries
+that take cares of sending MAVLinkinstructions to MAVLink supported drones and
+systems (like PX4).
+MAVSDK supports languages including C++,
+Python, Swift, and Java.
+Your team mainly focuses on developing the
+code in the mission computer for the high level
+autonomy logic.
+The workshop focuses mostly on python and
+sometimes C++.
+14
+
+XXX
+
+TITLE MAVSDK python
+Install
+SUBTITLE
+
+•
+
+•
+
+On the terminal console of the Mission
+Computer, install MAVSDK by entering the
+following commands.
+The virtual machine provided has MAVSDK and
+no further installation is needed.
+
+15
+
+Using Simulator
+
+16
+
+XXX
+
+TITLE
+Simulator
+SUBTITLE
+•
+
+•
+
+•
+
+•
+
+•
+
+•
+
+The Qualifier challenge and workshop uses
+simulation environment. “World” is simulated
+using Gazebo Harmonic.
+The simulation environment is in the VMWare
+virtual desktop machine, and runs within the
+virtual machine.
+PX4 also runs within the virtual machine in
+Software-In-The-Loop mode (SITL PX4), to
+emulate a real-life drone in the simulation
+environment.
+The Gazebo gives SITL PX4 the simulated
+sensors data, and also provides camera or
+depth camera feeds to your code.
+Your code sends commands to PX4 SITL,
+which then controls the virtual drone in the
+simulation.
+Ground Control Station, QGroundControl,
+monitors and controls the emulated PX4.
+QGroundControl has been installed into
+•
+the VMWare virtual desktop machine.
+17
+
+XXX
+
+TITLE
+PX4
+Software In The Loop (SITL)
+SUBTITLE
+•
+
+A copy of the PX4 source code needs to
+replicated onto your machine.
+
+•
+
+The provided VMWare virtual machine has a
+copy of PX4 source code.
+
+•
+
+•
+
+•
+
+The PX4 SITL has virtual drones that have
+cameras, depth cameras and camera with
+gimbal.
+The drone that we are going to use is
+gz_x500_vision or gz_x500_depth.
+To run the virtual drone, need to “compile” the
+source code of the PX4 which will then starts
+the virtual environment.
+
+•
+
+Once spawned, it will keep running until you
+CTRL+C it.
+
+•
+
+Once spawned, you can run your codes.
+18
+
+XXX
+[NSTRUCTOR
+TO DEMO]
+
+TITLE to Start/Build Simulation
+Steps
+SUBTITLE
+•
+
+•
+•
+•
+
+Open a new Terminal Window and type the
+following command:
+cd ~
+•
+•
+./start_px4.sh
+Then choose the vehicle by entering 1 or 2
+Then choose the simulation world.
+Lastly, wish to start QGroundControl.
+
+19
+
+Flight Control using
+MAVSDK
+
+20
+
+XXX
+
+TITLECode: Takeoff and Land
+First
+SUBTITLE
+•
+•
+•
+
+Refer to takeoff_and_land.py.
+Key concepts in the code:
+When PX4 drone is turned on, it broadcasts a
+heartbeat MAVLink via udp port 14540 by
+default. This code make your program listens
+at port 14540:
+
+[NSTRUCTOR TO DEMO AND EXPLAIN CODE]
+
+drone.connect(system_address="udpin://0.0.0
+.0:14540"))
+
+•
+•
+
+•
+•
+•
+
+Once detect a heartbeat, it connects to the
+drone that advertise the heartbeat.
+All function are called using await which
+means pause the execution of a coroutine until
+a specific asynchronous task (an "awaitable") is
+complete because MAVSDK python is
+asynchronous.
+Uses await asyncio.sleep(5)instead of
+time.sleep.
+Wait for successful connection before
+proceeding.
+Check for successful landing.
+21
+
+XXX
+
+TITLE
+Considerations
+SUBTITLE
+•
+
+•
+
+Graceful Exit: Pressing Ctrl+C will raise
+KeyboardInterrupt. In production code,
+wrap asyncio.run(run()) in a try/except
+or use signal handlers to send a safe
+drone.action.land() or
+drone.action.kill() before exiting.
+SITL vs Real Hardware: This code works
+identically on a real drone, but you must
+change system_address to
+"serial:///dev/ttyACM0:57600" if the
+your code runs on single board computer that
+connects to the PX4 flight controller via serial
+port or UDP/TCP address if the drone has
+remote access wifi.
+
+22
+
+XXX
+
+Refer to basic_offboard_control.py
+TITLE
+SUBTITLE
+•
+
+•
+
+•
+
+•
+•
+
+•
+
+•
+
+Autonomy capabilities are achieved using
+companion computer that performs autonomous
+logic, instead of the PX4 flight control.
+Then the companion computer then control PX4 via
+offboard mode. PX4 handles the low-level motor
+controls based on the high level instructions from
+companion computer.
+Offboard mode means that the flight controller
+relinquish autonomous flight logics to an external
+computer via MAVLINK. Key concepts when using
+offboard mode:
+Start by calling offboard.start() and end use
+offboard.stop().
+PX4 requires offboard setpoints at least every 0.5
+seconds. Meaning your code must send a setpoint
+command every 0.5 seconds (notice the
+asyncio.sleep (0.2)). If not, PX4 will switch
+back control to the next flight mode as a form of
+failsafe.
+The code demonstrates controlling the PX4 using
+set velocity setpoint command - await
+drone.offboard.set_velocity_ned(vel)
+Important concept for velocity: The Coordinate
+frame of PX4 is North (+X), East (+y) and Down (+z)
+Yaw is clockwise from north. -ve for z means up.
+
+[NSTRUCTOR TO DEMO AND EXPLAIN CODE]
+
+23
+
+XXX
+
+Important Note for Offboard control
+TITLE
+SUBTITLE
+•
+
+•
+•
+•
+•
+•
+•
+
+Never use time.sleep(): It blocks the asyncio event
+loop, causing MAVLink heartbeats to drop and PX4
+to trigger failsafes.
+SITL vs Real Drone: This code is identical for
+hardware. Only change system_address and ensure:
+Radio/Telemetry link is stable
+Offboard mode is permitted in your PX4 parameters
+(COM_RC_IN_MODE=1, COM_OBL_ACT=2, etc.)
+You have a reliable way to trigger RC override or
+failsafe if needed
+Real Drone: Mode sequences using RC - ARM >POSITION->OFFBOARD
+Debugging Tip: Add telemetry monitoring during
+offboard:
+
+24
+
+XXX
+
+Coordinates Frames of PX4
+TITLE
+SUBTITLE
+•
+
+•
+
+[NSTRUCTOR TO DEMO AND EXPLAIN
+VELOCITY_BODY.PY]
+
+Take note especially when you are using using API
+that is based on body frame or world frame. Body
+frame means with respect of the body of the
+quadcopter.
+Refer to velocity_body.py for controlling velocity.
+
+25
+
+XXX
+
+Key concepts in Fly_to_coordinate.py
+TITLE
+SUBTITLE
+•
+
+•
+
+•
+
+•
+
+•
+•
+•
+
+•
+
+drone.action.goto_location(lat, lon,
+alt, yaw): High-level PX4 command.
+Automatically switches to HOLD → GOTO mode and
+uses PX4's internal position controller.
+NED vs GPS: This example uses Global Coordinates
+(Lat/Lon/Alt MSL). PX4 internally converts to NED
+relative to home.
+Arrival Detection: MAVSDK doesn't provide a native
+"arrived" callback. You must poll
+drone.telemetry.position() and compute
+distance. The Haversine formula handles Earth
+curvature accurately for drone-scale distances.
+Tolerance & Timeout: Real systems oscillate.
+pos_tolerance=1.0m and
+alt_tolerance=0.5m prevent infinite waiting.
+Timeout prevents script hang on PX4 navigation
+failures.
+Real Hardware Warning: On physical drones, always:
+Test in COM_RC_IN_MODE=1 (Offboard/MAVLink
+allowed)
+Keep RC sticks ready for manual override, especially
+switch out of offboard mode into hold mode when
+something went wrong.
+Set COM_OBL_ACT=1 (Land) or 2 (Hold) for
+offboard failures
+
+[NSTRUCTOR TO DEMO AND EXPLAIN
+FLY_TO_COODINATE.PY]
+
+26
+
+Getting Telemetry Data
+
+27
+
+XXX
+
+Getting IMU data for state estimation
+TITLE
+SUBTITLE
+and
+control feedback
+•
+
+•
+•
+•
+
+[NSTRUCTOR TO DEMO AND then EXPLAIN IMU.PY]
+
+The python code, imu.py, connects to PX4 using
+udp, and ask streams of Inertia Measurement Unit
+(IMU) at a rate of 200Hz using telemetry.imu().
+Prints sensor readings: acceleration, angular
+velocity, magnetic field and temperature.
+Take note of _frd which means the data is in
+coordinate frame of (Forward-Right-Down)
+IMU are often come in handy by complementing
+position estimation:
+•
+Fast angular rate for attitude stablization
+Acceleration data for feedforward control
+•
+
+28
+
+XXX
+
+Get other data like battery, and flight
+TITLE
+SUBTITLE
+mode
+•
+
+•
+•
+
+[NSTRUCTOR TO DEMO AND then EXPLAIN
+get_battery.PY]
+
+get_battery.py shows how to get battery level using
+MAVSDK async function which requires your code to
+provide a callback function to MAVSDK to call.
+get_flightmode.py shows how to use MAVSDK to find
+out flight mode of the PX4.
+is_arm_air.py shows how to check if drone is in the
+air.
+
+29
+
+Getting camera video
+stream
+
+30
+
+XXX
+
+Get video feed using OpenCV and GZTITLE
+SUBTITLE
+transport
+•
+
+The MAVSDK does not provide means to get video
+stream.
+
+•
+
+Gazebo provides video stream using gz-transport
+where it provides frame by frame.
+
+•
+
+GZ-Transport uses subscribe-publish mechanism
+where it will publish data to all subscribers whenever
+new data is available.
+
+•
+
+Therefore, just need subscribe to topic and wait for
+call from gz-transport.
+
+•
+
+Refer to get_video.py to see how to subscribe, wait
+and then display image on the screen.
+
+•
+
+When doing object detection, your code might have
+to do it more efficiently to prevent object detection
+from holding up your program. We will study that in
+subsequent workshop.
+
+[NSTRUCTOR TO DEMO AND then EXPLAIN
+get_video.py]
+
+31
+
+XXX
+
+Summary
+TITLE
+SUBTITLE
+•
+
+•
+
+This workshop provides the base building blocks for
+developing autonomy codes in the mission
+computer using MAVSDK.
+Often, the autonomy codes process telemetry data
+from drone and camera data, to determine
+trajectory and then setpoints to command the
+movement of the quadcopters. Then again, get data
+as form of closed-loop feedback to the setpoints.
+
+32
+
+XXX
+
+TITLE
+References
+or Additional
+SUBTITLE
+Materials
+•
+•
+
+•
+
+•
+
+•
+
+https://docs.px4.io/main/en/getting_started/px4_basi
+c_concepts
+MAVSDK python sample codes:
+https://github.com/mavlink/MAVSDKPython/tree/main/examples
+MAVSDK Python Action API Documentation:
+http://mavsdk-python-docs.s3-website.eu-central1.amazonaws.com/plugins/action.html
+MAVSDK Python System API Documentation:
+http://mavsdk-python-docs.s3-website.eu-central1.amazonaws.com/system.html#mavsdk.system.Syste
+m
+PX4 Coordinate frame:
+https://docs.px4.io/main/en/ros2/user_guide
+
+33
+
+THANK YOU
+
+34
+
+

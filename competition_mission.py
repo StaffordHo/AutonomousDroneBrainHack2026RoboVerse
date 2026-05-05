@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 from mavsdk import System
-from mavsdk.offboard import OffboardError, VelocityBodyYawspeed
+from mavsdk.offboard import OffboardError, VelocityBodyYawspeed, PositionNedYaw
 from mavsdk.action import ActionError
 
 from gz.transport13 import Node
@@ -19,12 +19,15 @@ from small_fuel_detector import detect_small_fuel_barrels
 from bearing_detection_logger import BearingDetectionLogger, normalize_angle_deg
 from obstacle_monitor import create_obstacle_monitor
 
+from AvoidancePlanner import AvoidancePlanner
+from GlobalMapper import GlobalMapper
+
 IMAGE_TOPIC = "/world/roboverse/model/x500_depth_0/link/camera_link/sensor/IMX214/image"
 EVIDENCE_DIR = "competition_evidence"
 
 YELLOW_SCORE = 50
 RED_SCORE = 100
-MAX_MISSION_TIME_S = 9 * 60  # 9 minutes (leaves 1 min buffer for landing and scoring)
+MAX_MISSION_TIME_S = 9 * 60  # 9 minutes
 
 IMAGE_WIDTH = 1920
 IMX214_HORIZONTAL_FOV_DEG = math.degrees(1.204)
@@ -32,14 +35,13 @@ IMX214_HORIZONTAL_FOV_DEG = math.degrees(1.204)
 # Global State
 latest_frame = None
 latest_yaw_deg = None
+latest_position_ned = None
 mission_start_time = None
-
 
 def get_elapsed_time():
     if mission_start_time is None:
         return 0
     return time.time() - mission_start_time
-
 
 def check_timeout():
     if get_elapsed_time() > MAX_MISSION_TIME_S:
@@ -47,23 +49,14 @@ def check_timeout():
         return True
     return False
 
-
 def calculate_score(summary):
     return summary["yellow"] * YELLOW_SCORE + summary["red"] * RED_SCORE
 
-
 def estimate_bearing_deg(detection, drone_yaw_deg):
     cx, _ = detection["center"]
-    
-    # Normalized horizontal position: left edge ≈ -0.5, image centre = 0, right edge ≈ +0.5
     normalized_x = (cx - (IMAGE_WIDTH / 2.0)) / IMAGE_WIDTH
-    
-    # Convert image offset into camera horizontal angle
     camera_offset_deg = normalized_x * IMX214_HORIZONTAL_FOV_DEG
-    
-    # Approximate world bearing
     return normalize_angle_deg(drone_yaw_deg + camera_offset_deg)
-
 
 def image_callback(msg: Image):
     global latest_frame
@@ -73,12 +66,15 @@ def image_callback(msg: Image):
     img = img.reshape((height, width, 3))
     latest_frame = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-
+async def telemetry_reader(drone):
+    global latest_position_ned
+    async for pos_vel in drone.telemetry.position_velocity_ned():
+        latest_position_ned = pos_vel.position
+        
 async def yaw_reader(drone):
     global latest_yaw_deg
     async for attitude in drone.telemetry.attitude_euler():
         latest_yaw_deg = attitude.yaw_deg
-
 
 async def wait_connected(drone):
     print("Waiting for drone connection...")
@@ -87,14 +83,12 @@ async def wait_connected(drone):
             print("Drone connected.")
             return
 
-
 async def wait_local_position(drone):
     print("Waiting for local position estimate...")
     async for health in drone.telemetry.health():
         if health.is_local_position_ok:
             print("Local position OK.")
             return
-
 
 async def arm_with_retry(drone, max_attempts=10, retry_delay=2.0):
     for attempt in range(1, max_attempts + 1):
@@ -108,59 +102,27 @@ async def arm_with_retry(drone, max_attempts=10, retry_delay=2.0):
             await asyncio.sleep(retry_delay)
     return False
 
-
 def draw_detections(frame, detections, summary):
     output = frame.copy()
-    
     for det in detections:
         x, y, w, h = det["bbox"]
         cx, cy = det["center"]
         colour = det["colour"]
-        
         box_colour = (0, 0, 255) if colour == "red" else (0, 255, 255)
-        
         cv2.rectangle(output, (x, y), (x + w, y + h), box_colour, 3)
         cv2.circle(output, (cx, cy), 5, box_colour, -1)
-        
         bearing = det.get("bearing_deg", 0.0)
         label = f"{colour} b:{bearing:.0f}"
-        
-        cv2.putText(
-            output,
-            label,
-            (x, max(y - 10, 30)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            box_colour,
-            2,
-        )
+        cv2.putText(output, label, (x, max(y - 10, 30)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, box_colour, 2)
 
     score = calculate_score(summary)
-    
-    # Draw summary panel
-    cv2.putText(
-        output,
-        f"Score: {score} | Confirmed: red={summary['red']} yellow={summary['yellow']}",
-        (30, 50),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1.0,
-        (255, 255, 255),
-        3,
-    )
-    
+    cv2.putText(output, f"Score: {score} | Confirmed: red={summary['red']} yellow={summary['yellow']}",
+                (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 3)
     elapsed = get_elapsed_time()
-    cv2.putText(
-        output,
-        f"Time: {elapsed//60:.0f}m {elapsed%60:.0f}s / 10m",
-        (30, 90),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (200, 200, 200),
-        2,
-    )
-
+    cv2.putText(output, f"Time: {elapsed//60:.0f}m {elapsed%60:.0f}s / 10m",
+                (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
     return output
-
 
 def save_evidence(frame, detections, summary, label):
     os.makedirs(EVIDENCE_DIR, exist_ok=True)
@@ -170,10 +132,8 @@ def save_evidence(frame, detections, summary, label):
     cv2.imwrite(image_path, output)
     print(f"Saved evidence image: {image_path} (Score: {calculate_score(summary)})")
 
-
-async def perception_scan(logger, args, duration_s=5, label="scan", stop_on_detection=True):
+async def perception_scan(logger, args, duration_s=5, label="scan", stop_on_detection=True, obstacle_monitor=None, mapper=None):
     print(f"Perception scan: {label} for {duration_s}s")
-    
     start_time = time.time()
     last_print_time = 0
     found_new_detection = False
@@ -183,12 +143,21 @@ async def perception_scan(logger, args, duration_s=5, label="scan", stop_on_dete
         if check_timeout():
             break
 
-        if latest_frame is None or latest_yaw_deg is None:
+        if latest_frame is None or latest_yaw_deg is None or latest_position_ned is None:
             await asyncio.sleep(0.05)
             continue
 
+        # Update mapper if provided
+        if mapper is not None and obstacle_monitor is not None and obstacle_monitor.latest_depth is not None:
+            pose = {
+                'north': latest_position_ned.north_m,
+                'east': latest_position_ned.east_m,
+                'yaw': math.radians(latest_yaw_deg),
+                'down': latest_position_ned.down_m
+            }
+            mapper.update_frame(obstacle_monitor.latest_depth, pose)
+
         frame = latest_frame.copy()
-        
         raw_detections, _, _, _ = detect_small_fuel_barrels(frame)
         
         bearing_detections = []
@@ -203,76 +172,99 @@ async def perception_scan(logger, args, duration_s=5, label="scan", stop_on_dete
 
         if new_confirmations:
             found_new_detection = True
-            for confirmed in new_confirmations:
-                print(
-                    f"NEW confirmed fuel: {confirmed['colour']} barrel "
-                    f"at world bearing {confirmed['bearing_deg']:.1f} deg"
-                )
-            
             save_evidence(frame, bearing_detections, summary, f"{label}_new_fuel")
-            
             if stop_on_detection:
-                print(f"[{label}] Fuel found. Ending scan early to continue search.")
                 return summary, True
 
         now = time.time()
         if now - last_print_time > 1.0:
-            print(
-                f"[{label}] Elapsed: {get_elapsed_time():.0f}s | "
-                f"red={summary['red']} yellow={summary['yellow']} "
-                f"score={calculate_score(summary)}"
-            )
+            print(f"[{label}] Elapsed: {get_elapsed_time():.0f}s | red={summary['red']} yellow={summary['yellow']}")
             last_print_time = now
 
         if not args.headless:
             output = draw_detections(frame, bearing_detections, summary)
-            cv2.imshow("RoboVerse Competition Mission", output)
+            cv2.imshow("RoboVerse", output)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
         await asyncio.sleep(0.05)
 
     summary = logger.summary()
-    
-    # Save a final state image for this scan if we didn't save a new detection
     if latest_frame is not None and not found_new_detection:
         save_evidence(latest_frame.copy(), latest_detections, summary, f"{label}_summary")
-
     return summary, found_new_detection
 
+async def navigate_to_waypoint(drone, target_n, target_e, target_d, obstacle_monitor, avoid_planner, global_mapper, label="nav"):
+    print(f"Navigating to {target_n:.1f}N, {target_e:.1f}E (Label: {label})")
+    
+    # Send a small velocity initially to engage offboard correctly
+    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0, 0, 0, 0))
+    
+    while not check_timeout():
+        if latest_position_ned is None or latest_yaw_deg is None:
+            await asyncio.sleep(0.1)
+            continue
+            
+        current_n = latest_position_ned.north_m
+        current_e = latest_position_ned.east_m
+        current_d = latest_position_ned.down_m
+        
+        distance_to_target = math.sqrt((target_n - current_n)**2 + (target_e - current_e)**2)
+        
+        if distance_to_target < 1.5:  # Arrival threshold
+            print(f"[{label}] Arrived at waypoint. (Distance {distance_to_target:.1f}m < 1.5m)")
+            await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0, 0, 0, 0))
+            return True
+            
+        depth_img = obstacle_monitor.latest_depth
+        if depth_img is not None:
+            pose = {
+                'north': current_n,
+                'east': current_e,
+                'yaw': math.radians(latest_yaw_deg),
+                'down': current_d
+            }
+            
+            # 1. Update Global Mapper
+            global_mapper.update_frame(depth_img, pose)
+            
+            # 2. Compute Avoidance Velocity Setpoint
+            vx, vy, info = avoid_planner.compute_velocity(
+                depth_map=depth_img,
+                pose=pose,
+                target_n=target_n,
+                target_e=target_e
+            )
+            
+            # Calculate altitude correction (vz)
+            # Down is positive. If target_d is -3.5 and current_d is -3.0, we want to go UP (negative vz).
+            vz_error = target_d - current_d
+            vz = max(min(vz_error * 1.0, 1.0), -1.0) # Clamp vertical speed to 1 m/s
+            
+            # Calculate yaw correction to face the target
+            target_yaw_rad = math.atan2(target_e - current_e, target_n - current_n)
+            yaw_error_rad = target_yaw_rad - pose["yaw"]
+            
+            # Normalize yaw error to [-pi, pi]
+            while yaw_error_rad > math.pi: yaw_error_rad -= 2 * math.pi
+            while yaw_error_rad < -math.pi: yaw_error_rad += 2 * math.pi
+                
+            yaw_rate_deg = math.degrees(yaw_error_rad) * 1.5 # Proportional control
+            yaw_rate_deg = max(min(yaw_rate_deg, 45.0), -45.0) # Clamp yaw rate
+            
+            # If we are very far off in yaw (e.g. > 45 deg), don't move forward fast
+            if abs(yaw_error_rad) > math.radians(45):
+                vx = 0.0
+                vy = 0.0
+            
+            # Send the velocity setpoint
+            await drone.offboard.set_velocity_body(VelocityBodyYawspeed(vx, vy, vz, yaw_rate_deg))
+            
+        await asyncio.sleep(0.1) # 10Hz update rate
+        
+    return False
 
-async def set_velocity_for(drone, vx, vy, vz, yaw_rate, duration_s, label, obstacle_monitor=None):
-    print(f"Movement: {label}")
-    step_s = 0.5
-    elapsed = 0.0
-
-    while elapsed < duration_s:
-        if check_timeout():
-            return False
-
-        if obstacle_monitor is not None:
-            too_close, distance = obstacle_monitor.obstacle_too_close()
-            if too_close:
-                print(f"[{label}] Obstacle too close at {distance:.2f} m. Stopping and avoiding.")
-                await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
-                await asyncio.sleep(0.5)
-                # Yaw to find a clear path
-                await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 30.0))
-                await asyncio.sleep(2.0)
-                await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
-                await asyncio.sleep(1.0)
-                return False
-
-        await drone.offboard.set_velocity_body(VelocityBodyYawspeed(vx, vy, vz, yaw_rate))
-        await asyncio.sleep(step_s)
-        elapsed += step_s
-
-    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
-    await asyncio.sleep(1.0)
-    return True
-
-
-async def yaw_for_or_until_detection(drone, perception_task, yaw_rate, duration_s):
+async def yaw_for_or_until_detection(drone, perception_task, yaw_rate, duration_s, obstacle_monitor, mapper):
     step_s = 0.25
     elapsed = 0.0
     await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, yaw_rate))
@@ -280,6 +272,16 @@ async def yaw_for_or_until_detection(drone, perception_task, yaw_rate, duration_
     while elapsed < duration_s:
         if check_timeout():
             break
+            
+        # Update map during yaw
+        if latest_position_ned is not None and latest_yaw_deg is not None and obstacle_monitor.latest_depth is not None:
+            pose = {
+                'north': latest_position_ned.north_m,
+                'east': latest_position_ned.east_m,
+                'yaw': math.radians(latest_yaw_deg),
+                'down': latest_position_ned.down_m
+            }
+            mapper.update_frame(obstacle_monitor.latest_depth, pose)
             
         if perception_task.done():
             await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
@@ -291,32 +293,27 @@ async def yaw_for_or_until_detection(drone, perception_task, yaw_rate, duration_
         
     return False
 
-
-async def yaw_scan(drone, logger, args, label):
+async def yaw_scan(drone, logger, args, label, obstacle_monitor, mapper):
     print(f"Yaw scan: {label}")
     
     perception_task = asyncio.create_task(
-        perception_scan(logger, args, duration_s=12, label=label, stop_on_detection=True)
+        perception_scan(logger, args, duration_s=12, label=label, stop_on_detection=True, obstacle_monitor=obstacle_monitor, mapper=mapper)
     )
 
-    # Sweep right, then left, then right to center
-    found = await yaw_for_or_until_detection(drone, perception_task, yaw_rate=15.0, duration_s=4)
+    found = await yaw_for_or_until_detection(drone, perception_task, yaw_rate=15.0, duration_s=4, obstacle_monitor=obstacle_monitor, mapper=mapper)
     if not found:
-        found = await yaw_for_or_until_detection(drone, perception_task, yaw_rate=-15.0, duration_s=8)
+        found = await yaw_for_or_until_detection(drone, perception_task, yaw_rate=-15.0, duration_s=8, obstacle_monitor=obstacle_monitor, mapper=mapper)
     if not found:
-        found = await yaw_for_or_until_detection(drone, perception_task, yaw_rate=15.0, duration_s=4)
+        found = await yaw_for_or_until_detection(drone, perception_task, yaw_rate=15.0, duration_s=4, obstacle_monitor=obstacle_monitor, mapper=mapper)
 
     await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
 
     if not perception_task.done():
         summary, found_from_task = await perception_task
-        found = found or found_from_task
     else:
         summary, found_from_task = perception_task.result()
-        found = found or found_from_task
 
     return summary
-
 
 async def main():
     global mission_start_time
@@ -332,13 +329,24 @@ async def main():
     print("Starting depth obstacle monitor...")
     depth_node, obstacle_monitor = create_obstacle_monitor()
 
+    # --- Setup Planners ---
+    # Gazebo depth_camera for x500_depth is 640x480.
+    K = np.array([[433.0, 0.0, 320.0],
+                  [0.0, 433.0, 240.0],
+                  [0.0, 0.0, 1.0]])
+                  
+    avoid_planner = AvoidancePlanner(K=K, width=640, height=480, max_speed=1.5, safe_distance=2.5, critical_distance=0.8)
+    # Using yaw_in_degrees=False because we pass math.radians() to the mapper
+    global_mapper = GlobalMapper(K=K, cam_height=1.0, obs_h_min=0.1, obs_h_max=1.5, yaw_in_degrees=False, yaw_smoothing=0.8, z_min=0.3, z_max=8.0)
+
     drone = System()
     await drone.connect(system_address="udpin://0.0.0.0:14540")
 
     await wait_connected(drone)
     await wait_local_position(drone)
 
-    print("Starting yaw telemetry reader...")
+    print("Starting telemetry readers...")
+    pos_task = asyncio.create_task(telemetry_reader(drone))
     yaw_task = asyncio.create_task(yaw_reader(drone))
 
     print("Setting takeoff altitude...")
@@ -366,76 +374,62 @@ async def main():
         print(f"Starting offboard failed: {error}")
         await drone.action.land()
         yaw_task.cancel()
+        pos_task.cancel()
         return
 
     logger = BearingDetectionLogger(bearing_threshold_deg=8.0, confirmation_frames=3)
 
     try:
+        # Get start position
+        while latest_position_ned is None:
+            await asyncio.sleep(0.1)
+        start_n = latest_position_ned.north_m
+        start_e = latest_position_ned.east_m
+
         # ---------------------------------------------------------
         # PASS 1: Mid-Altitude Systematic Search (Ground focus)
+        # We define a strict NED waypoint pattern relative to start
         # ---------------------------------------------------------
         print("--- BEGIN PASS 1 (Mid-Altitude) ---")
-        await yaw_scan(drone, logger, args, "pass1_start")
+        alt_1 = -3.5
+        await yaw_scan(drone, logger, args, "pass1_start", obstacle_monitor, global_mapper)
 
-        # Fly 3 parallel lanes, faster than before
-        for lane in range(3):
+        # Lane waypoints (Local NED relative to start)
+        # 40x40 arena: We fly 30 meters forward, 4 lanes wide (18m total shift)
+        L = 30.0
+        W = 6.0
+        waypoints_pass1 = [
+            (start_n + L, start_e),               # Fwd lane 0
+            (start_n + L, start_e + W),           # Shift right
+            (start_n,     start_e + W),           # Back lane 1
+            (start_n,     start_e + W*2),         # Shift right
+            (start_n + L, start_e + W*2),         # Fwd lane 2
+            (start_n + L, start_e + W*3),         # Shift right
+            (start_n,     start_e + W*3),         # Back lane 3
+        ]
+
+        for i, (wp_n, wp_e) in enumerate(waypoints_pass1):
             if check_timeout(): break
-            
-            # Forward leg
-            await set_velocity_for(
-                drone, vx=1.2, vy=0.0, vz=0.0, yaw_rate=0.0, duration_s=12, 
-                label=f"pass1_lane_{lane}_fwd", obstacle_monitor=obstacle_monitor
-            )
-            await yaw_scan(drone, logger, args, f"pass1_scan_{lane}_fwd")
-            
-            # Shift right
-            if lane < 2 and not check_timeout():
-                await set_velocity_for(
-                    drone, vx=0.0, vy=1.0, vz=0.0, yaw_rate=0.0, duration_s=5, 
-                    label=f"pass1_shift_right_{lane}", obstacle_monitor=obstacle_monitor
-                )
-                await yaw_scan(drone, logger, args, f"pass1_scan_shift_{lane}")
-                
-            # Fly backwards for the next lane to save turning time
-            if lane < 2 and not check_timeout():
-                await set_velocity_for(
-                    drone, vx=-1.2, vy=0.0, vz=0.0, yaw_rate=0.0, duration_s=12, 
-                    label=f"pass1_lane_{lane}_back", obstacle_monitor=obstacle_monitor
-                )
-                await yaw_scan(drone, logger, args, f"pass1_scan_{lane}_back")
-                
-                # Shift right again for next lane
-                await set_velocity_for(
-                    drone, vx=0.0, vy=1.0, vz=0.0, yaw_rate=0.0, duration_s=5, 
-                    label=f"pass1_shift_right_back_{lane}", obstacle_monitor=obstacle_monitor
-                )
-                await yaw_scan(drone, logger, args, f"pass1_scan_shift_back_{lane}")
+            await navigate_to_waypoint(drone, wp_n, wp_e, alt_1, obstacle_monitor, avoid_planner, global_mapper, label=f"pass1_wp_{i}")
+            await yaw_scan(drone, logger, args, f"pass1_scan_wp_{i}", obstacle_monitor, global_mapper)
 
         # ---------------------------------------------------------
         # PASS 2: High-Altitude Return (Elevated targets focus)
         # ---------------------------------------------------------
         if not check_timeout():
             print("--- BEGIN PASS 2 (High-Altitude) ---")
+            alt_2 = -5.5
             
-            # Climb up by 2 meters
-            await set_velocity_for(
-                drone, vx=0.0, vy=0.0, vz=-2.0, yaw_rate=0.0, duration_s=4, 
-                label="climb_pass2"
-            )
-            await yaw_scan(drone, logger, args, "pass2_start")
+            # Ascend in place (at the end of pass 1)
+            await navigate_to_waypoint(drone, latest_position_ned.north_m, latest_position_ned.east_m, alt_2, obstacle_monitor, avoid_planner, global_mapper, label="climb_pass2")
+            await yaw_scan(drone, logger, args, "pass2_start", obstacle_monitor, global_mapper)
 
-            # Diagonal return across the map
-            await set_velocity_for(
-                drone, vx=-1.0, vy=-1.0, vz=0.0, yaw_rate=0.0, duration_s=12, 
-                label="pass2_return_1", obstacle_monitor=obstacle_monitor
-            )
-            await yaw_scan(drone, logger, args, "pass2_return_mid")
-            
-            await set_velocity_for(
-                drone, vx=-1.0, vy=-1.0, vz=0.0, yaw_rate=0.0, duration_s=12, 
-                label="pass2_return_2", obstacle_monitor=obstacle_monitor
-            )
-            await yaw_scan(drone, logger, args, "pass2_end")
+            # Diagonal return across the covered area
+            await navigate_to_waypoint(drone, start_n + (L/2), start_e + (W*1.5), alt_2, obstacle_monitor, avoid_planner, global_mapper, label="pass2_return_mid")
+            await yaw_scan(drone, logger, args, "pass2_scan_mid", obstacle_monitor, global_mapper)
+
+            await navigate_to_waypoint(drone, start_n, start_e, alt_2, obstacle_monitor, avoid_planner, global_mapper, label="pass2_return_end")
+            await yaw_scan(drone, logger, args, "pass2_end", obstacle_monitor, global_mapper)
 
         # Final Summary Print
         final_summary = logger.summary()
@@ -448,6 +442,9 @@ async def main():
         print(f"Yellow Barrels (50pt): {final_summary['yellow']}")
         print(f"TOTAL SCORE: {final_score}")
         print("=================================\n")
+        
+        # Save Global Map
+        global_mapper.save_points("global_obstacles.npy")
 
     finally:
         print("Stopping offboard mode...")
@@ -463,6 +460,7 @@ async def main():
             cv2.destroyAllWindows()
             
         yaw_task.cancel()
+        pos_task.cancel()
 
 
 if __name__ == "__main__":
