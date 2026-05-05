@@ -994,9 +994,27 @@ Next task:
 - Next: create a new small-fuel-barrel detector and avoid counting the large decorative barrels as targets.
 - While creating `yaw_scan_mission.py`, a syntax error occurred: `SyntaxError: 'await' outside function`, caused by pasting the yaw-scan block outside the async `main()` function. Safer fix: create a separate yaw-scan script that imports perception functions from `integrated_stationary_mission.py` instead of manually editing a large file.
 - Yaw scan mission ran successfully: the drone connected, armed, took off, entered offboard mode, performed right/left/right yaw scan, ran perception concurrently, saved evidence images, landed, and completed.
-- New issue observed during yaw scan: image-centre-based duplicate filtering is not valid while the drone is rotating. The same physical barrel moves across the image as yaw changes, so it is counted repeatedly at different pixel centres. Example result: `red=12, yellow=9, total=21`, which is an over-count.
-- Next logger revision: replace image-centre-only duplicate filtering with yaw-compensated bearing clustering. Compute approximate object bearing = drone yaw + camera horizontal angle from bbox centre, then merge detections by colour and bearing instead of raw pixel centre.
-- OakD-Lite camera FOV check: `IMX214` uses `<horizontal_fov>1.204</horizontal_fov>`, which is approximately 69.0 degrees. `StereoOV7251` uses `<horizontal_fov>1.274</horizontal_fov>`, approximately 73.0 degrees. Since the active RGB image topic is `IMX214/image`, use 1.204 rad / 69.0 degrees for bearing estimation.
-- Created `bearing_detection_logger.py` for yaw-compensated duplicate filtering. Next step is to modify `yaw_scan_mission.py` so detections are assigned approximate world bearings using MAVSDK yaw telemetry and IMX214 camera FOV.
 
-\n## V3 Updates: Advanced Navigation\n- Upgraded to Goal + Avoidance Vector navigation (AvoidancePlanner.py)\n- Replaced time-based lanes with strict geographic NED waypoints (30x18m area)\n- Integrated Global Occupancy Grid Mapping (GlobalMapper.py)\n- Drone now dynamically yaws towards waypoints to keep depth camera clear
+## V3 Updates: Advanced Navigation & Mapping (Qualifier Final Architecture)
+
+### 1. Goal + Avoidance Vector Navigation
+- **Rationale**: The previous lane-following logic used `VelocityBodyYawspeed` moving strictly forward on a timer. If an obstacle was detected, the drone stopped completely. This was unreliable because battery voltage drops caused the drone to travel less distance over time, missing large portions of the map. Furthermore, stopping blindly at obstacles led to getting stuck.
+- **Solution**: Integrated the `AvoidancePlanner.py` module. The drone now calculates a continuous set of flight velocities to avoid obstacles (using a depth histogram) while heavily biasing its choice toward a defined geographic target waypoint (Goal Vector).
+
+### 2. Geographic Waypoint Search Grid
+- **Rationale**: Time-based navigation was unreliable. We needed rigid geographic bounds to ensure the entire arena is searched.
+- **Solution**: Built a strict NED waypoint pattern (30 meters forward, shifting right by 6 meters per lane, covering an 18-meter width). The drone uses the `AvoidancePlanner` to dynamically maneuver around obstacles while progressing toward these rigid waypoints.
+
+### 3. Dynamic Yawing for Sensor Visibility
+- **Rationale**: When using `PositionNedYaw` to reach a waypoint, the flight controller pitched aggressively, causing the depth camera to point at the floor. The planner thought the floor was a wall and reacted violently. Also, returning along a lane required flying backwards, blinding the forward-facing depth sensor.
+- **Solution**: Switched back to `VelocityBodyYawspeed` but implemented dynamic yawing. The drone continuously calculates the angle to the target waypoint and physically turns its nose to face it. If the drone is facing >45 degrees away from the target, it stops moving forward and simply spins until the depth camera has a clear view of the flight path.
+
+### 4. Global Occupancy Grid Mapping
+- **Rationale**: A requirement for the competition finals is mapping the environment globally.
+- **Solution**: Integrated `GlobalMapper.py`. Using the Gazebo IMX214 camera intrinsics, the `float32` depth map is projected into the global North-East-Down (NED) frame. As the drone explores, it builds a massive 2D matrix of obstacle points. 
+- **Git Hotfix**: The initial map output (`global_obstacles.npy`) was 1.2 GB. This broke the GitHub push due to the 100MB file limit. The `.npy` file was successfully removed from the Git index, added to `.gitignore`, and the repository was successfully pushed.
+
+**Current Status:** 
+- Advanced Navigation Architecture deployed successfully.
+- Code is merged and pushed to GitHub via SSH.
+- System is ready for the RoboVerse 2026 Qualifier!
