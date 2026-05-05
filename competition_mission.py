@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 from mavsdk import System
-from mavsdk.offboard import OffboardError, VelocityBodyYawspeed, PositionNedYaw
+from mavsdk.offboard import OffboardError, VelocityBodyYawspeed, PositionNedYaw, VelocityNedYaw
 from mavsdk.action import ActionError
 
 from gz.transport13 import Node
@@ -236,7 +236,7 @@ async def navigate_to_waypoint(drone, target_n, target_e, target_d, obstacle_mon
                 target_e=target_e
             )
             
-            # Calculate altitude correction (vz)
+            # Calculate altitude correction (vz) in strict NED frame
             # Down is positive. If target_d is -3.5 and current_d is -3.0, we want to go UP (negative vz).
             vz_error = target_d - current_d
             vz = max(min(vz_error * 1.0, 1.0), -1.0) # Clamp vertical speed to 1 m/s
@@ -249,16 +249,26 @@ async def navigate_to_waypoint(drone, target_n, target_e, target_d, obstacle_mon
             while yaw_error_rad > math.pi: yaw_error_rad -= 2 * math.pi
             while yaw_error_rad < -math.pi: yaw_error_rad += 2 * math.pi
                 
-            yaw_rate_deg = math.degrees(yaw_error_rad) * 1.5 # Proportional control
-            yaw_rate_deg = max(min(yaw_rate_deg, 45.0), -45.0) # Clamp yaw rate
-            
             # If we are very far off in yaw (e.g. > 45 deg), don't move forward fast
             if abs(yaw_error_rad) > math.radians(45):
                 vx = 0.0
                 vy = 0.0
+
+            # Convert Body velocities (vx, vy) to NED velocities (vn, ve)
+            yaw = pose["yaw"]
+            vn = vx * math.cos(yaw) - vy * math.sin(yaw)
+            ve = vx * math.sin(yaw) + vy * math.cos(yaw)
+
+            # Map boundary geofence (prevent flying out of 40x40 map, assuming origin is near center)
+            # If the drone approaches the map edge (e.g. +/- 18m), gently push it back
+            if current_n > 18.0 and vn > 0: vn = 0.0
+            if current_n < -18.0 and vn < 0: vn = 0.0
+            if current_e > 18.0 and ve > 0: ve = 0.0
+            if current_e < -18.0 and ve < 0: ve = 0.0
             
-            # Send the velocity setpoint
-            await drone.offboard.set_velocity_body(VelocityBodyYawspeed(vx, vy, vz, yaw_rate_deg))
+            # Send the strict world-frame velocity setpoint
+            target_yaw_deg = math.degrees(target_yaw_rad)
+            await drone.offboard.set_velocity_ned(VelocityNedYaw(vn, ve, vz, target_yaw_deg))
             
         await asyncio.sleep(0.1) # 10Hz update rate
         
@@ -306,7 +316,7 @@ async def yaw_scan(drone, logger, args, label, obstacle_monitor, mapper):
     if not found:
         found = await yaw_for_or_until_detection(drone, perception_task, yaw_rate=15.0, duration_s=4, obstacle_monitor=obstacle_monitor, mapper=mapper)
 
-    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
+    await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, 0.0))
 
     if not perception_task.done():
         summary, found_from_task = await perception_task
@@ -365,7 +375,7 @@ async def main():
     await asyncio.sleep(8)
 
     print("Setting initial offboard setpoint...")
-    await drone.offboard.set_velocity_body(VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0))
+    await drone.offboard.set_velocity_ned(VelocityNedYaw(0.0, 0.0, 0.0, 0.0))
 
     print("Starting offboard mode...")
     try:
