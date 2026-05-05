@@ -1,0 +1,5 @@
+__pycache__/
+evidence/
+search_evidence/
+competition_evidence/
+*debug_frame.png
