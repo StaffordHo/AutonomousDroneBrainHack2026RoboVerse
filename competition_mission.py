@@ -345,7 +345,7 @@ async def main():
                   [0.0, 433.0, 240.0],
                   [0.0, 0.0, 1.0]])
                   
-    avoid_planner = AvoidancePlanner(K=K, width=640, height=480, max_speed=1.5, safe_distance=2.5, critical_distance=0.8)
+    avoid_planner = AvoidancePlanner(K=K, width=640, height=480, max_speed=1.5, safe_distance=4.0, critical_distance=1.5)
     # Using yaw_in_degrees=False because we pass math.radians() to the mapper
     global_mapper = GlobalMapper(K=K, cam_height=1.0, obs_h_min=0.1, obs_h_max=1.5, yaw_in_degrees=False, yaw_smoothing=0.8, z_min=0.3, z_max=8.0)
 

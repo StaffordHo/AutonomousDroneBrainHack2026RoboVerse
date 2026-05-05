@@ -159,11 +159,16 @@ class AvoidancePlanner:
     # Emergency avoidance (override only)
     # -------------------------------------------------
     def emergency_override(self, left, center, right):
+        # Push away from anything inside critical distance
         if center < self.critical_distance:
             if left > right:
-                return 0.0, -self.max_speed   # go left
+                return 0.0, -self.max_speed   # strafe left
             else:
-                return 0.0, self.max_speed    # go right
+                return 0.0, self.max_speed    # strafe right
+        elif left < self.critical_distance:
+            return 0.0, self.max_speed        # push right
+        elif right < self.critical_distance:
+            return 0.0, -self.max_speed       # push left
         return None
 
     # -------------------------------------------------
