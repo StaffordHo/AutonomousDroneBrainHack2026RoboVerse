@@ -161,6 +161,10 @@ class AvoidancePlanner:
     def emergency_override(self, left, center, right):
         # Push away from anything inside critical distance
         if center < self.critical_distance:
+            # If extremely close to center wall, BACK UP to clear collision
+            if center < 0.5:
+                return -self.max_speed, 0.0
+
             if left > right:
                 return 0.0, -self.max_speed   # strafe left
             else:
@@ -305,8 +309,9 @@ class AvoidancePlanner:
 
     def compute_velocity(self, depth_map, pose=None, target_n=None, target_e=None):
         # --- Sanitize Depth Map ---
-        # inf means too far (clear)
-        depth_map = np.where(np.isinf(depth_map), 10.0, depth_map)
+        # inf often means "glare/no return" on white walls in Gazebo.
+        # Treat inf as NaN so it is handled as a blind spot/obstacle.
+        depth_map = np.where(np.isinf(depth_map), np.nan, depth_map)
 
         # --- Calculate Goal Angle ---
         goal_angle_body = 0.0
