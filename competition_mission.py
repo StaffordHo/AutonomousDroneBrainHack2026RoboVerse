@@ -241,16 +241,24 @@ async def navigate_to_waypoint(drone, target_n, target_e, target_d, obstacle_mon
             vz_error = target_d - current_d
             vz = max(min(vz_error * 1.0, 1.0), -1.0) # Clamp vertical speed to 1 m/s
             
-            # Calculate yaw correction to face the target
+            # 3. Yaw Control (Face the target or the safe avoidance path)
+            # Rationale: If the path is blocked or we need to steer heavily, 
+            # we turn the camera to face the safest direction instead of blindly strafing.
             target_yaw_rad = math.atan2(target_e - current_e, target_n - current_n)
+            blocked = info.get('blocked', False)
+            
+            # If blocked or steering more than 20 degrees off-goal, face the safe path
+            if blocked or abs(info['best_angle']) > math.radians(20):
+                target_yaw_rad = pose["yaw"] + info['best_angle']
+                
             yaw_error_rad = target_yaw_rad - pose["yaw"]
             
             # Normalize yaw error to [-pi, pi]
             while yaw_error_rad > math.pi: yaw_error_rad -= 2 * math.pi
             while yaw_error_rad < -math.pi: yaw_error_rad += 2 * math.pi
                 
-            # If we are very far off in yaw (e.g. > 45 deg), don't move forward fast
-            if abs(yaw_error_rad) > math.radians(45):
+            # If we are very far off in yaw (e.g. > 30 deg), don't move forward until we face it
+            if abs(yaw_error_rad) > math.radians(30):
                 vx = 0.0
                 vy = 0.0
 
@@ -259,8 +267,7 @@ async def navigate_to_waypoint(drone, target_n, target_e, target_d, obstacle_mon
             vn = vx * math.cos(yaw) - vy * math.sin(yaw)
             ve = vx * math.sin(yaw) + vy * math.cos(yaw)
 
-            # Map boundary geofence (prevent flying out of 40x40 map, assuming origin is near center)
-            # If the drone approaches the map edge (e.g. +/- 18m), gently push it back
+            # Map boundary geofence (prevent flying out of 40x40 map)
             if current_n > 18.0 and vn > 0: vn = 0.0
             if current_n < -18.0 and vn < 0: vn = 0.0
             if current_e > 18.0 and ve > 0: ve = 0.0
