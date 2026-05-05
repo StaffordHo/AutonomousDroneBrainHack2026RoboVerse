@@ -1014,7 +1014,14 @@ Next task:
 - **Solution**: Integrated `GlobalMapper.py`. Using the Gazebo IMX214 camera intrinsics, the `float32` depth map is projected into the global North-East-Down (NED) frame. As the drone explores, it builds a massive 2D matrix of obstacle points. 
 - **Git Hotfix**: The initial map output (`global_obstacles.npy`) was 1.2 GB. This broke the GitHub push due to the 100MB file limit. The `.npy` file was successfully removed from the Git index, added to `.gitignore`, and the repository was successfully pushed.
 
+### 5. Transition to VelocityNedYaw & Geofencing
+- **Rationale**: The drone was sometimes "climbing" over walls or flying upwards into the sky upon collision. This was caused by using `VelocityBodyYawspeed`, where the vertical velocity (VZ) was tied to the drone's tilted body frame. When the drone pitched to brake or dodge, its "down" vector pointed diagonally, causing uncontrolled climbing.
+- **Solution**: Upgraded the entire flight loop to `VelocityNedYaw`. This locks the vertical velocity to the true World Z-axis (NED). The drone now holds its 3.5m altitude with rock-solid precision regardless of its pitch or roll angle.
+- **Geofencing**: Implemented a hard 18-meter radial geofence in `navigate_to_waypoint`. If the drone reaches the edge of the arena, its outward velocity is automatically clamped to 0.0, physically preventing it from exiting the map.
+
 **Current Status:** 
-- Advanced Navigation Architecture deployed successfully.
-- Code is merged and pushed to GitHub via SSH.
+- Advanced Navigation Architecture (V3.2) deployed with strict altitude hold and geofencing.
+- All AvoidancePlanner math bugs (NaN/Inf) resolved.
+- Code successfully pushed to GitHub.
 - System is ready for the RoboVerse 2026 Qualifier!
+```
