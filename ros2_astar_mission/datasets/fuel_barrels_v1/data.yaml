@@ -1,0 +1,6 @@
+path: /home/stafford99/roboverse_qualifier/ros2_astar_mission/datasets/fuel_barrels_v1
+train: images/train
+val: images/val
+names:
+  0: red_fuel_barrel
+  1: yellow_fuel_barrel

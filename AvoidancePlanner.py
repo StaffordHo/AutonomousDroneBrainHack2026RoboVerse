@@ -95,11 +95,9 @@ class AvoidancePlanner:
     # Detect blockage condition
     # -------------------------------------------------
     def detect_blocked(self, left, center, right):
-        return (
-            center < self.critical_distance and
-            left < self.safe_distance and
-            right < self.safe_distance
-        )
+        # We are "Blocked" if the center is close OR we are boxed in.
+        # This triggers the "Stop-and-Turn" logic in the mission script.
+        return (center < self.critical_distance) or (left < 1.0 and right < 1.0)
 
     # -------------------------------------------------
     # Detect corridor / open space
@@ -162,8 +160,9 @@ class AvoidancePlanner:
         # Push away from anything inside critical distance
         if center < self.critical_distance:
             # If extremely close to center wall, BACK UP to clear collision
-            if center < 0.5:
-                return -self.max_speed, 0.0
+            # Increased threshold to 0.7m for better clearance
+            if center < 0.7:
+                return -self.max_speed * 0.8, 0.0
 
             if left > right:
                 return 0.0, -self.max_speed   # strafe left

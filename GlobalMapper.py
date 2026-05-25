@@ -77,23 +77,39 @@ class GlobalMapper:
         if xy_obstacles.shape[0] == 0:
             return False
             
-        # 3. Transform to global NED frame & accumulate
+        # 3. Transform to global NED frame & Filter Ego-Noise
         global_pts = self._local_to_ned_global(xy_obstacles, north, east, yaw)
-        self.global_points = np.vstack([self.global_points, global_pts])
+        
+        # Filter out points too close to the current drone position (1.0m)
+        # This prevents the drone from mapping itself or its shadow
+        dn = global_pts[:, 0] - north
+        de = global_pts[:, 1] - east
+        dist_sq = dn**2 + de**2
+        mask = dist_sq > (1.0**2) # 1.0 meter exclusion zone
+        
+        filtered_pts = global_pts[mask]
+        
+        if filtered_pts.shape[0] > 0:
+            self.global_points = np.vstack([self.global_points, filtered_pts])
         return True
     
     def get_global_points(self):
         """Returns copy of accumulated (north, east) points in meters"""
         return self.global_points.copy()
     
+    def add_manual_point(self, n, e):
+        """Adds a specific coordinate as an obstacle. Useful for marking 'stuck' spots."""
+        new_pt = np.array([[n, e]], dtype=np.float32)
+        self.global_points = np.append(self.global_points, new_pt, axis=0)
+
     def save_points(self, filename="global_obstacles.npy"):
         np.save(filename, self.global_points)
         print(f"✅ Saved {len(self.global_points)} points to {filename}")
 
-    def get_occupancy_grid(self, resolution=0.5, dilation_iters=2):
+    def get_occupancy_grid(self, resolution=0.5, dilation_iters=6):
         """
-        Converts the point cloud into a 2D occupancy grid for A* pathfinding.
-        Returns: (grid, origin_offset) where origin_offset is (min_n, min_e)
+        Generates a 2D occupancy grid (0=free, 1=occupied).
+        dilation_iters: Number of iterations for binary dilation to buffer obstacles.
         """
         if len(self.global_points) == 0:
             return None, None
@@ -129,6 +145,30 @@ class GlobalMapper:
             
         origin_offset = (min_n, min_e)
         return grid, origin_offset
+
+    def project_pixel_to_ned(self, u, v, depth, pose):
+        """
+        Projects a pixel (u,v) with depth to global NED coordinates.
+        Useful for localizing detected fuel barrels.
+        """
+        # Pixel to local camera coordinates (X_cam = right, Z_cam = forward)
+        Z_cam = depth
+        # self.cx, self.fx are from intrinsics K
+        fx = self.K[0, 0]
+        cx = self.K[0, 2]
+        X_cam = (u - cx) * Z_cam / fx
+        
+        # Transform to Global NED
+        local_xy = np.array([[X_cam, Z_cam]])
+        # Use existing transformation logic
+        yaw = pose['yaw']
+        if self.yaw_in_degrees:
+            yaw = np.deg2rad(yaw)
+        if not self.yaw_clockwise:
+            yaw = -yaw
+            
+        ned = self._local_to_ned_global(local_xy, pose['north'], pose['east'], yaw)
+        return ned[0] # Returns [north, east]
 
 
 # ================= Sample usage EXAMPLE =================

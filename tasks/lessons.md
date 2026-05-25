@@ -1,0 +1,32 @@
+# Lessons
+
+- When a manual drone run produces zero confirmations despite visible candidate logs, inspect both mission logs and saved frames before tuning thresholds. Navigation pose/yaw behavior can be the root cause, not just perception.
+- For PX4 position steps after yaw commands, do not assume the live yaw has already reached the requested yaw. Wait for yaw convergence and compute the next local-NED step from the commanded heading.
+- Keep camera capture bursts rate-limited. Burst saving is useful for evidence, but excessive disk I/O can compete with perception and navigation during a timed flight.
+- In RoboVerse qualifier visuals, the red-scoring barrel may look white/orange from the camera, not saturated red. Detector class names should follow scoring labels, but HSV masks must follow the actual rendered colours.
+- Do not stop a scoring mission at the minimum eligibility threshold, but do stop once the score is good enough and later sweeps are creating repeated blocked states. Extra scoring passes after eligibility should be explicit opt-in, not the default.
+- When multiple confirmations appear while staring at one area, first tighten duplicate suppression before making the detector stricter. Depth-derived N/E localization can jitter enough to split one object into several candidates.
+- A front depth ray is not enough for RoboVerse shelves/compartments. Before every position step, require side clearance as well as center clearance, and abort mid-step if attitude starts drifting.
+- Expanding search radius after a good scoring run can push the drone out of the RoboVerse arena. Keep a conservative local-NED range margin unless full boundary mapping is proven.
+- Logging an unsafe condition is not enough; unsafe pre-move clearance must return immediately before any yaw or position command.
+- Do not use in-place yaw turns as blocked recovery near shelves or compartments. Recover to the last known safe pose first, then choose a new heading.
+- A single newest safe pose can become a recovery trap. Keep a short history of safe poses and retreat to an older/farther one when repeated obstacle checks fail.
+- Do not spend an entire search pass retrying one blocked pocket. After repeated failed moves, skip the heading or retreat toward open space so exploration breadth continues.
+- After safety is stable, breadth comes from scheduler time, not just heading count. A single short sweep can score eligibility but still under-search; keep rotating sweep cycles until the landing reserve.
+- Continuous background perception means every move does not need a full stopped scan. After stable scoring, save time by sampling stopped views periodically and relying on candidate events for focused investigation.
+- Do not trade safety margin for coverage by increasing step size after a stable run. If coverage is too local, add explicit global coverage goals while keeping the proven conservative movement/safety settings.
+- If global coverage keeps revisiting one visual cluster, split candidate logging from active investigation. Let the drone cover the map first, keep candidate memory alive for the whole mission, then spend yaw/YOLO/scan time only on saved candidate waypoints.
+- For blind global coverage, avoid ring-major waypoint order near spawn. It causes repeated tight pivots; use outward spokes and skip large yaw turns when side clearance is marginal.
+- A position-step arrival radius that is too loose can silently shrink real coverage distance. For `0.30m` steps, a `0.20m` arrival radius can behave like `0.10m` movement.
+- Do not replace a working MAVSDK PX4 command path with ROS2 offboard until `px4_msgs` and `/fmu/in/*` topics are verified. ROS2 can still be useful first as a sensor bridge through `ros_gz_bridge`.
+- In blind coverage, a lower-frame clearance or attitude abort should retreat immediately. Holding position in the same shelf pocket can let pitch/roll worsen into `critical_state`.
+- Fixed global ring waypoints are a poor default inside shelf-like worlds. When sectors are unreachable, switch to open-frontier strides that maximize new cells and only revisit candidates for colours still needed.
+- Purely local frontier scoring can still overcommit to one long open corridor. Add macro-sector intent and recenter between far sectors when the goal is whole-world coverage.
+- Macro-sector intent must stay authoritative once selected. Local path memory is useful for old sweep nudges, but if it re-selects the movement heading after the frontier planner, it can pull the drone back into the same corridor and defeat coverage.
+- Do not model corridor clearance as a binary side-threshold failure. In shelf-like RoboVerse paths, a side reading around `1.5-1.6m` can be passable if front/lower clearance are healthy; traverse it with a shorter step and a centerline steering bias toward the wider side.
+- If corridor traversal is only checked at move start, mid-step side-noise will still trigger wasteful older-pose recoveries. Keep corridor passability active during the whole step and reserve older safe-pose recovery for front collapse, true side-floor breach, or critical attitude.
+- PID-style steering state must only update while executing a real movement. Frontier candidate scoring should use a stateless estimate, otherwise lookahead evaluation can contaminate the live controller before the drone enters the corridor.
+- For team handoff packages, copy the runnable mission stack plus a few representative logs/assets, but keep bulk generated outputs out of the package so GitHub review stays focused.
+- If YOLO is only a confirmation aid, keep it opt-in and lazy-loaded. The fast HSV detector should own continuous perception so CPU stays available for MAVSDK, depth processing, and safety loops.
+- For manual override in Offboard mode, use a small command stream and pause autonomous motion at every gate. A joystick bridge must keep sending while a stick is held, not only when a device event changes.
+- A high-confidence yellow candidate seen many times should not remain unconfirmed solely because depth samples or yaw span wobble. Keep normal multi-view confirmation, but add a persistent-candidate path that requires repeated sightings and stable local position.

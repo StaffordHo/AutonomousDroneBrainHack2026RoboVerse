@@ -1,0 +1,17 @@
+/**:
+  ros__parameters:
+    map_frame: px4_ned
+    map_size_m: 40.0
+    resolution_m: 0.5
+    arena_half_extent_m: 19.0
+    lane_spacing_m: 4.0
+    low_scan_down_m: -1.45
+    high_scan_down_m: -2.45
+    two_altitude_pass: true
+    obstacle_inflation_m: 0.75
+    max_depth_m: 11.5
+    occupied_threshold: 60
+    unknown_cost: 4.0
+    yellow_visit_down_m: -1.45
+    red_visit_down_m: -2.35
+    candidate_duplicate_radius_m: 1.6

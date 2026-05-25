@@ -33,9 +33,17 @@ class AStarPlanner:
         start = self.ned_to_grid(start_ned[0], start_ned[1])
         goal = self.ned_to_grid(goal_ned[0], goal_ned[1])
 
+        # Explicitly clear a small area around the current drone position
+        # to prevent "Start cell is blocked" from self-mapping or local noise
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                nr, nc = start[0] + dr, start[1] + dc
+                if 0 <= nr < self.height and 0 <= nc < self.width:
+                    self.grid[nr, nc] = 0
+
         if not self.is_valid(start[0], start[1]):
-            # If start is blocked (e.g. drone is very close to wall), find nearest free cell
-            print("A* Warning: Start cell is blocked. Finding nearest free cell...")
+            # If start is still blocked, find nearest free cell
+            print("A* Warning: Start cell is still blocked. Finding nearest free cell...")
             start = self.find_nearest_free(start)
         
         if not self.is_valid(goal[0], goal[1]):

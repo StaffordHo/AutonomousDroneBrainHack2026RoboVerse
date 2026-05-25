@@ -1,6 +1,37 @@
 __pycache__/
+*.py[cod]
+
+.agents/
+.codex/
+.pytest_cache/
+.venv/
+venv/
+
 evidence/
 search_evidence/
 competition_evidence/
+competition_photos/
+bc_logs/
+logs/
+output/
+
+**/competition_evidence/
+**/competition_photos/
+**/bc_logs/
+**/logs/
+**/output/
+**/survey_outputs/
+
+ros2_astar_mission/build/
+ros2_astar_mission/install/
+ros2_astar_mission/log/
+
 *debug_frame.png
 *.npy
+*.ulg
+*.jsonl
+mission_log_*.csv
+
+# Trained model weights are kept locally. They are large and should be shared
+# through release assets, cloud storage, or Git LFS rather than normal Git.
+*.pt
