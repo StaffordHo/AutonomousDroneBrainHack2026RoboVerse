@@ -153,7 +153,9 @@ Current status:
 - Builds under ROS2 Humble.
 - Avoids `cv_bridge` because the local environment has a NumPy 2.x versus ROS Humble binary compatibility issue.
 - Uses MAVSDK control by default because it is the working PX4 command path on this machine.
-- Includes direct-goal fallback if A* waypoints go stale.
+- The successful low-load mode uses MAVSDK `VelocityNedYaw` plus direct depth-histogram steering inside the follower, with A*, mission manager, frontier, and detector disabled.
+- Dataset capture can be enabled separately with only the RGB bridge and `dataset_capture_node`, producing weak YOLO labels and annotated review frames.
+- Includes direct-goal fallback if A* waypoints go stale, but the full graph should only be reintroduced after the low-load path is stable.
 
 ## 7. Detection and Dataset Strategy
 

@@ -5,8 +5,8 @@ This folder is a clean “back to fundamentals” stack for the RoboVerse Qualif
 It avoids the previous monolithic heading-sweep behavior and splits the mission into ROS2 nodes:
 
 - `depth_mapper_node`: builds a 40m x 40m occupancy grid from `/depth_camera`.
-- `frontier_goal_node`: generates end-to-end 4m-lane coverage goals for the full map.
-- `mission_manager_node`: prioritizes fuel-barrel investigation goals, then falls back to coverage.
+- `frontier_goal_node`: optional standalone end-to-end 4m-lane coverage goal generator.
+- `mission_manager_node`: prioritizes fuel-barrel investigation goals, then falls back to its own lightweight coverage route.
 - `astar_planner_node`: plans an A* path through the live occupancy grid.
 - `fuel_detector_node`: runs YOLO if available, with HSV fallback for testing.
 - `mavsdk_waypoint_follower_node`: follows A* waypoints using the working MAVSDK command path.
@@ -45,6 +45,16 @@ source install/setup.bash
 
 Start the RoboVerse world as usual with the `x500_vision` vehicle. If the image topic differs, override it in the launch command.
 
+The workshop notes also recommend setting the EKF origin after PX4 is ready.
+In the PX4 `pxh>` console:
+
+```text
+commander set_ekf_origin 47.397742 8.545594 488.0
+```
+
+If `position_velocity_ned()` later jumps to impossible values, restart PX4 and
+repeat this before debugging the ROS2 planner.
+
 ## Run With MAVSDK Control, ROS2 Mapping/Planning
 
 `px4_msgs` is not importable on this machine right now, so this is the practical first run:
@@ -55,12 +65,215 @@ source install/setup.bash
 ros2 launch roboverse_astar astar_mission.launch.py \
   use_mavsdk_control:=true \
   use_px4_ros2_control:=false \
+  use_frontier:=false \
   system_address:=udpin://0.0.0.0:14540 \
   disable_gcs_failsafe:=true \
   model_path:=/home/stafford99/roboverse_qualifier/rrt_assisted_mission/Codes/yolov8s_roboverse.pt
 ```
 
+If the desktop/terminal hangs shortly after launch, start in stages. First test
+only PX4 connection and Offboard control:
+
+```bash
+ROS_LOG_DIR=/tmp/ros_logs ros2 launch roboverse_astar astar_mission.launch.py \
+  use_mavsdk_control:=true \
+  use_px4_ros2_control:=false \
+  use_sensor_bridge:=false \
+  use_depth_mapper:=false \
+  use_detector:=false \
+  use_frontier:=false \
+  use_mission_manager:=false \
+  use_astar:=false \
+  system_address:=udpin://0.0.0.0:14540 \
+  disable_gcs_failsafe:=true
+```
+
+Stop each launch with `Ctrl-C` and wait for it to exit before starting the next
+one. If the drone is already armed or airborne from a previous attempt, restart
+PX4/Gazebo for the cleanest test.
+
+Then add mapping and A* without YOLO:
+
+```bash
+ROS_LOG_DIR=/tmp/ros_logs ros2 launch roboverse_astar astar_mission.launch.py \
+  use_mavsdk_control:=true \
+  use_px4_ros2_control:=false \
+  use_detector:=false \
+  use_image_bridge:=false \
+  use_depth_bridge:=true \
+  use_frontier:=false \
+  depth_process_hz:=2.0 \
+  depth_publish_hz:=1.5 \
+  depth_num_rays:=32 \
+  command_hz:=3.0 \
+  local_pose_publish_hz:=3.0 \
+  mavsdk_position_rate_hz:=3.0 \
+  mavsdk_attitude_rate_hz:=3.0 \
+  system_address:=udpin://0.0.0.0:14540 \
+  disable_gcs_failsafe:=true
+```
+
+If the laptop still kills one of the small Python nodes, remove both A* and the
+mission manager for the next smoke test. The MAVSDK follower can generate a
+small local coverage route by itself, which isolates PX4/MAVSDK motion from the
+ROS2 planning graph:
+
+```bash
+ROS_LOG_DIR=/tmp/ros_logs ros2 launch roboverse_astar astar_mission.launch.py \
+  use_mavsdk_control:=true \
+  use_px4_ros2_control:=false \
+  use_sensor_bridge:=false \
+  use_depth_mapper:=false \
+  use_detector:=false \
+  use_frontier:=false \
+  use_mission_manager:=false \
+  use_astar:=false \
+  enable_follower_coverage:=true \
+  follower_coverage_half_extent_m:=2.0 \
+  follower_coverage_lane_spacing_m:=1.0 \
+  follower_coverage_reached_radius_m:=0.7 \
+  command_hz:=3.0 \
+  local_pose_publish_hz:=3.0 \
+  set_mavsdk_stream_rates:=false \
+  direct_goal_max_step_m:=0.25 \
+  system_address:=udpin://0.0.0.0:14540 \
+  disable_gcs_failsafe:=true
+```
+
+If LOCAL_POSITION_NED starts jumping to impossible values, use the docs-backed
+velocity version of the same test. This does not trust N/E position for
+movement; it sends a tiny timed square pattern and uses a small vertical
+velocity correction to hold the takeoff altitude:
+
+```bash
+ROS_LOG_DIR=/tmp/ros_logs ros2 launch roboverse_astar astar_mission.launch.py \
+  use_mavsdk_control:=true \
+  use_px4_ros2_control:=false \
+  use_sensor_bridge:=false \
+  use_depth_mapper:=false \
+  use_detector:=false \
+  use_frontier:=false \
+  use_mission_manager:=false \
+  use_astar:=false \
+  enable_follower_coverage:=true \
+  offboard_control_mode:=velocity \
+  follower_velocity_speed_m_s:=0.25 \
+  follower_velocity_leg_s:=3.0 \
+  follower_velocity_pause_s:=1.0 \
+  follower_velocity_yaw_deg:=0.0 \
+  command_hz:=5.0 \
+  local_pose_publish_hz:=2.0 \
+  set_mavsdk_stream_rates:=false \
+  system_address:=udpin://0.0.0.0:14540 \
+  disable_gcs_failsafe:=true
+```
+
+After the velocity-only pattern is healthy, add just the depth bridge and let
+the MAVSDK follower steer directly from depth histograms. This is the current
+lowest-load autonomy path: no mission manager, no A*, no frontier node, no
+detector, and no `cv_bridge`.
+
+```bash
+ROS_LOG_DIR=/tmp/ros_logs ros2 launch roboverse_astar astar_mission.launch.py \
+  use_mavsdk_control:=true \
+  use_px4_ros2_control:=false \
+  use_sensor_bridge:=true \
+  use_image_bridge:=false \
+  use_depth_bridge:=true \
+  use_depth_mapper:=false \
+  use_detector:=false \
+  use_frontier:=false \
+  use_mission_manager:=false \
+  use_astar:=false \
+  offboard_control_mode:=velocity \
+  velocity_source:=depth \
+  follower_velocity_speed_m_s:=0.28 \
+  depth_process_hz:=3.0 \
+  depth_stale_timeout_s:=2.0 \
+  depth_safe_distance_m:=2.2 \
+  depth_critical_distance_m:=1.05 \
+  depth_strafe_speed_m_s:=0.18 \
+  depth_turn_hysteresis_m:=0.35 \
+  command_hz:=5.0 \
+  local_pose_publish_hz:=2.0 \
+  set_mavsdk_stream_rates:=false \
+  system_address:=udpin://0.0.0.0:14540 \
+  disable_gcs_failsafe:=true
+```
+
+To collect fuel-barrel training data while the depth-velocity explorer flies,
+turn on only the RGB bridge and the lightweight dataset capture node. This saves
+candidate full frames, annotated review images, crops, YOLO label text files,
+and `data.yaml` under `datasets/fuel_barrels_v1/`.
+
+```bash
+ROS_LOG_DIR=/tmp/ros_logs ros2 launch roboverse_astar astar_mission.launch.py \
+  use_mavsdk_control:=true \
+  use_px4_ros2_control:=false \
+  use_sensor_bridge:=true \
+  use_image_bridge:=true \
+  use_depth_bridge:=true \
+  use_depth_mapper:=false \
+  use_detector:=false \
+  use_dataset_capture:=true \
+  use_frontier:=false \
+  use_mission_manager:=false \
+  use_astar:=false \
+  offboard_control_mode:=velocity \
+  velocity_source:=depth \
+  follower_velocity_speed_m_s:=0.28 \
+  depth_process_hz:=3.0 \
+  depth_stale_timeout_s:=2.0 \
+  depth_safe_distance_m:=2.2 \
+  depth_critical_distance_m:=1.05 \
+  depth_strafe_speed_m_s:=0.18 \
+  depth_turn_hysteresis_m:=0.35 \
+  dataset_process_hz:=2.0 \
+  dataset_candidate_capture_period_s:=1.0 \
+  dataset_max_image_width:=640 \
+  dataset_save_raw_periodic:=false \
+  command_hz:=5.0 \
+  local_pose_publish_hz:=2.0 \
+  set_mavsdk_stream_rates:=false \
+  system_address:=udpin://0.0.0.0:14540 \
+  disable_gcs_failsafe:=true
+```
+
+The dataset capture labels are deliberately permissive weak labels. Review the
+`annotated/` images and correct labels before running a final YOLO training
+job, especially for red barrels whose rendered appearance may be orange/white.
+
+Only after that is stable, enable detection with the nano model first:
+
+```bash
+ROS_LOG_DIR=/tmp/ros_logs ros2 launch roboverse_astar astar_mission.launch.py \
+  use_mavsdk_control:=true \
+  use_px4_ros2_control:=false \
+  use_image_bridge:=true \
+  use_depth_bridge:=true \
+  use_frontier:=false \
+  yolo_device:=cpu \
+  detector_inference_period_s:=1.5 \
+  detector_max_image_width:=320 \
+  depth_process_hz:=2.0 \
+  depth_publish_hz:=1.5 \
+  depth_num_rays:=32 \
+  command_hz:=3.0 \
+  local_pose_publish_hz:=3.0 \
+  mavsdk_position_rate_hz:=3.0 \
+  mavsdk_attitude_rate_hz:=3.0 \
+  system_address:=udpin://0.0.0.0:14540 \
+  disable_gcs_failsafe:=true \
+  model_path:=/home/stafford99/roboverse_qualifier/rrt_assisted_mission/Codes/yolov8n_roboverse.pt
+```
+
 This starts the Gazebo-to-ROS2 image/depth bridge, mapper, detector, goal manager, A* planner, and MAVSDK waypoint follower.
+
+The launch now defaults `use_frontier:=false` because the mission manager has
+the same lawnmower coverage route built in. That removes one Python process
+from the critical path and avoids the repeated `frontier_goal_node` SIGKILLs
+seen on the Legion laptop while swap was full. Re-enable the standalone node
+only when debugging coverage-goal output directly.
 
 The image/depth nodes intentionally do not use `cv_bridge`. This machine has a
 ROS Humble `cv_bridge` binary compiled against NumPy 1.x, while the active

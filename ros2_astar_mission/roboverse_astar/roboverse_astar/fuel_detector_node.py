@@ -1,9 +1,14 @@
 import json
 import math
 import os
+import time
 from typing import List, Optional
 
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 import cv2
 import numpy as np
@@ -19,6 +24,11 @@ try:
     from ultralytics import YOLO
 except Exception:  # pragma: no cover - optional runtime dependency
     YOLO = None
+
+try:
+    import torch
+except Exception:  # pragma: no cover - optional runtime dependency
+    torch = None
 
 
 class FuelDetectorNode(Node):
@@ -40,6 +50,8 @@ class FuelDetectorNode(Node):
         self.declare_parameter("confidence", 0.52)
         self.declare_parameter("imgsz", 416)
         self.declare_parameter("device", "cpu")
+        self.declare_parameter("inference_period_s", 1.0)
+        self.declare_parameter("max_image_width", 416)
         self.declare_parameter("camera_hfov_deg", 69.0)
         self.declare_parameter("standoff_m", 2.0)
         self.declare_parameter("max_depth_m", 10.0)
@@ -47,6 +59,14 @@ class FuelDetectorNode(Node):
         self.latest_depth: Optional[np.ndarray] = None
         self.pose: Optional[PoseStamped] = None
         self.model = None
+        self.last_inference_time = 0.0
+
+        if torch is not None:
+            try:
+                torch.set_num_threads(1)
+                torch.set_num_interop_threads(1)
+            except Exception:
+                pass
 
         model_path = str(self.get_parameter("model_path").value)
         if YOLO is not None and model_path:
@@ -62,13 +82,13 @@ class FuelDetectorNode(Node):
             Image,
             str(self.get_parameter("image_topic").value),
             self.image_callback,
-            5,
+            1,
         )
         self.create_subscription(
             Image,
             str(self.get_parameter("depth_topic").value),
             self.depth_callback,
-            5,
+            1,
         )
         self.create_subscription(
             PoseStamped,
@@ -94,12 +114,19 @@ class FuelDetectorNode(Node):
             self.get_logger().warn(f"Depth conversion failed: {exc}")
 
     def image_callback(self, msg: Image):
+        now = time.monotonic()
+        period = max(0.05, float(self.get_parameter("inference_period_s").value))
+        if now - self.last_inference_time < period:
+            return
+        self.last_inference_time = now
+
         try:
             frame = image_msg_to_bgr(msg)
         except Exception as exc:
             self.get_logger().warn(f"Image conversion failed: {exc}")
             return
 
+        frame = self.resize_for_detection(frame)
         detections = self.detect_yolo(frame) if self.model is not None else self.detect_hsv(frame)
         if not detections:
             return
@@ -135,6 +162,15 @@ class FuelDetectorNode(Node):
                     }
                 )
         return detections
+
+    def resize_for_detection(self, frame):
+        max_width = int(self.get_parameter("max_image_width").value)
+        if max_width <= 0 or frame.shape[1] <= max_width:
+            return frame
+
+        scale = max_width / float(frame.shape[1])
+        new_size = (max_width, max(1, int(frame.shape[0] * scale)))
+        return cv2.resize(frame, new_size, interpolation=cv2.INTER_AREA)
 
     def detect_hsv(self, frame) -> List[dict]:
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)

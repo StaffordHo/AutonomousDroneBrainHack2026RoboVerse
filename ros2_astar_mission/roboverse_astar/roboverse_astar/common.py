@@ -2,8 +2,6 @@ import math
 from dataclasses import dataclass
 from typing import Iterable, Optional, Tuple
 
-import cv2
-import numpy as np
 from geometry_msgs.msg import PoseStamped, Quaternion
 
 
@@ -109,6 +107,8 @@ def image_msg_to_array(msg, force_depth=False):
     with NumPy 2.x. This decoder covers the encodings produced by ros_gz_bridge
     for the RoboVerse IMX214 RGB stream and `/depth_camera`.
     """
+    import numpy as np
+
     encoding = (msg.encoding or "").lower()
     height = int(msg.height)
     width = int(msg.width)
@@ -142,6 +142,8 @@ def image_msg_to_array(msg, force_depth=False):
 
 
 def image_msg_to_depth(msg):
+    import numpy as np
+
     encoding = (msg.encoding or "").lower()
     arr = image_msg_to_array(msg, force_depth=(encoding in ("", "32fc1", "32fc")))
     if arr.dtype == np.uint16:
@@ -150,6 +152,8 @@ def image_msg_to_depth(msg):
 
 
 def image_msg_to_bgr(msg):
+    import cv2
+
     encoding = (msg.encoding or "").lower()
     arr = image_msg_to_array(msg, force_depth=False)
 
@@ -175,6 +179,8 @@ def image_msg_to_bgr(msg):
 
 
 def _reshape_image(msg, dtype, channels):
+    import numpy as np
+
     dtype = np.dtype(dtype)
     wire_dtype = dtype
     if dtype.itemsize > 1:

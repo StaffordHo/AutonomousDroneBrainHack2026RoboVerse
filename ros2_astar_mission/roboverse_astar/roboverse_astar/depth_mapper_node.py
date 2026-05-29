@@ -1,7 +1,7 @@
 import math
+import time
 from typing import Optional
 
-import cv2
 import numpy as np
 import rclpy
 from geometry_msgs.msg import PoseStamped
@@ -34,10 +34,11 @@ class DepthMapperNode(Node):
         self.declare_parameter("max_depth_m", 11.5)
         self.declare_parameter("min_depth_m", 0.25)
         self.declare_parameter("obstacle_inflation_m", 0.75)
-        self.declare_parameter("num_rays", 96)
+        self.declare_parameter("num_rays", 48)
         self.declare_parameter("camera_fx", 433.0)
         self.declare_parameter("camera_cx", 320.0)
-        self.declare_parameter("publish_hz", 4.0)
+        self.declare_parameter("publish_hz", 2.0)
+        self.declare_parameter("process_hz", 3.0)
         self.declare_parameter("robot_clear_radius_m", 0.9)
 
         size_m = float(self.get_parameter("map_size_m").value)
@@ -59,6 +60,7 @@ class DepthMapperNode(Node):
         self.camera_cx = float(self.get_parameter("camera_cx").value)
 
         self.pose: Optional[PoseStamped] = None
+        self.last_process_time = 0.0
         self.grid = np.full(
             (self.grid_spec.height, self.grid_spec.width),
             -1,
@@ -75,7 +77,7 @@ class DepthMapperNode(Node):
             Image,
             str(self.get_parameter("depth_topic").value),
             self.depth_callback,
-            10,
+            1,
         )
         self.map_pub = self.create_publisher(
             OccupancyGrid,
@@ -95,11 +97,17 @@ class DepthMapperNode(Node):
         depth = image_msg_to_depth(depth_msg)
         depth[(~np.isfinite(depth)) | (depth > self.max_depth_m)] = self.max_depth_m
         depth[depth < self.min_depth_m] = self.max_depth_m
-        return cv2.medianBlur(depth, 5)
+        return depth
 
     def depth_callback(self, msg: Image):
         if self.pose is None:
             return
+
+        now = time.monotonic()
+        period = 1.0 / max(0.2, float(self.get_parameter("process_hz").value))
+        if now - self.last_process_time < period:
+            return
+        self.last_process_time = now
 
         try:
             depth = self.clean_depth(msg)

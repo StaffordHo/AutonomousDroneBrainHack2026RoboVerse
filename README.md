@@ -40,6 +40,12 @@ python3 score_from_survey_waypoints.py
 
 This is the cleaner "back to fundamentals" architecture. It separates mapping, detection, goal generation, A* planning, and PX4/MAVSDK control into ROS2 nodes.
 
+The current successful ROS2 path is intentionally lighter than the full graph:
+MAVSDK velocity control plus the Gazebo depth bridge for exploration, with an
+optional RGB dataset-capture node for collecting fuel-barrel training images.
+See [SUCCESSFUL_ROS2_DEPTH_VELOCITY_CAPTURE.md](SUCCESSFUL_ROS2_DEPTH_VELOCITY_CAPTURE.md)
+for the exact reproducible workflow.
+
 ```bash
 cd ~/roboverse_qualifier/ros2_astar_mission
 colcon build --symlink-install

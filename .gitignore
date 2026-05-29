@@ -9,6 +9,7 @@ venv/
 
 evidence/
 search_evidence/
+confirmed/
 competition_evidence/
 competition_photos/
 bc_logs/
@@ -25,6 +26,12 @@ output/
 ros2_astar_mission/build/
 ros2_astar_mission/install/
 ros2_astar_mission/log/
+ros2_astar_mission/datasets/**/annotated/
+ros2_astar_mission/datasets/**/crops/
+ros2_astar_mission/datasets/**/images/
+ros2_astar_mission/datasets/**/labels/
+ros2_astar_mission/datasets/**/raw/
+ros2_astar_mission/datasets/**/capture_metadata.csv
 
 *debug_frame.png
 *.npy
