@@ -1,0 +1,6 @@
+path: .
+train: images/train
+val: images/val
+names:
+  0: red_fuel_barrel
+  1: yellow_fuel_barrel
